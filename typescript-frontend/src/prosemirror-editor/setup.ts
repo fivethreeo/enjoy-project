@@ -3,8 +3,9 @@ import { Schema, type Node as ProseMirrorNode, type NodeSpec } from 'prosemirror
 import { schema as basicSchema } from 'prosemirror-schema-basic';
 import { addListNodes } from 'prosemirror-schema-list';
 import { Plugin, PluginKey, type Transaction } from 'prosemirror-state';
-import { Decoration, DecorationSet } from 'prosemirror-view';
+import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view';
 import { breadcrumbPlugin } from '../../prosemirror-breadcrumbs/src/index';
+import { modalPopupPlugin } from './modal-popup';
 
 const richTextNodes = addListNodes(
   basicSchema.spec.nodes.remove('image'),
@@ -455,9 +456,32 @@ export function richTextPlugins(): Plugin[] {
   return exampleSetup({ schema: richTextSchema, menuBar: false });
 }
 
-export function pagePlugins(): Plugin[] {
+export function prosemirrorEditorShellPlugin(shell: HTMLElement): Plugin {
+  return new Plugin({
+    view(view: EditorView) {
+      if (view.dom.parentElement !== shell) {
+        return {};
+      }
+
+      const addedShellClass = !shell.classList.contains('prosemirror-editor-shell');
+      shell.classList.add('prosemirror-editor-shell');
+      return {
+        destroy() {
+          if (addedShellClass) {
+            shell.classList.remove('prosemirror-editor-shell');
+          }
+        },
+      };
+    },
+  });
+}
+
+/** Builds the standard page-editor plugins for the schema mounted by a host. */
+export function pagePlugins(schema: Schema, shell: HTMLElement): Plugin[] {
   return [
-    ...exampleSetup({ schema: pageSchema, menuBar: false }),
+    ...exampleSetup({ schema, menuBar: false }),
+    prosemirrorEditorShellPlugin(shell),
+    modalPopupPlugin(shell),
     preserveTextBlockAttrs(),
     reelOverflowPlugin(),
     breadcrumbPlugin({

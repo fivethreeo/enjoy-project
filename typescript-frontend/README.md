@@ -16,6 +16,10 @@ Start the dev server, and the app will be available at [http://localhost:3000](h
 npm run dev
 ```
 
+The standalone page-editor playground is available at
+[http://localhost:3000/playground/playground](http://localhost:3000/playground/playground).
+It runs entirely in Rsbuild and does not need Django.
+
 Build the app for production:
 
 ```bash

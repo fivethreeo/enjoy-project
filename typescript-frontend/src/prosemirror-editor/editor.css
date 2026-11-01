@@ -1,23 +1,24 @@
-.page-editor-shell {
+.prosemirror-editor-shell {
   --editor-controls-top: 0px;
   --editor-toolbar-height: 0px;
   --editor-controls-height: 0px;
   align-self: stretch;
   inline-size: 100%;
   min-inline-size: 0;
+  position: relative;
   padding-block-start: var(--editor-controls-height);
   font-family: sans-serif;
   font-size: 1.25rem;
   line-height: 1.5;
 }
 
-.page-editor-shell .ProseMirror.editor {
+.prosemirror-editor-shell .ProseMirror {
   font-family: sans-serif;
   font-size: 1.25rem;
   line-height: 1.5;
 }
 
-.page-editor-shell .ProseMirror.editor :is(
+.prosemirror-editor-shell .ProseMirror :is(
   p,
   blockquote,
   ul,
@@ -34,36 +35,36 @@
   line-height: inherit;
 }
 
-.page-editor-shell :is(button, input, select, textarea),
-.page-editor-shell .ProseMirror-menu-dropdown-menu {
+.prosemirror-editor-shell :is(button, input, select, textarea),
+.prosemirror-editor-shell .ProseMirror-menu-dropdown-menu {
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
 }
 
-.page-editor-shell .ProseMirror :is(h1, h2, h3) {
+.prosemirror-editor-shell .ProseMirror :is(h1, h2, h3) {
   font-family: Georgia, 'Times New Roman', serif;
   font-weight: 400;
   line-height: 1.1;
 }
 
-.page-editor-shell > :not([role='toolbar']),
-.page-editor-shell .ProseMirror-menubar-wrapper,
-.page-editor-shell > [role='toolbar'],
-.page-editor-shell .ProseMirror-breadcrumb-container {
+.prosemirror-editor-shell > :not([role='toolbar']),
+.prosemirror-editor-shell .ProseMirror-menubar-wrapper,
+.prosemirror-editor-shell > [role='toolbar'],
+.prosemirror-editor-shell .ProseMirror-breadcrumb-container {
   max-inline-size: none;
 }
 
-.page-editor-shell > :not([role='toolbar']),
-.page-editor-shell .ProseMirror-menubar-wrapper {
+.prosemirror-editor-shell > :not([role='toolbar']),
+.prosemirror-editor-shell .ProseMirror-menubar-wrapper {
   inline-size: 100%;
 }
 
-.page-editor-shell.show-block-outlines .ProseMirror .box {
+.prosemirror-editor-shell.show-block-outlines .ProseMirror .box {
   outline-color: rgb(0 0 0 / 20%);
 }
 
-.page-editor-shell.show-block-outlines .ProseMirror :is(
+.prosemirror-editor-shell.show-block-outlines .ProseMirror :is(
   section,
   p,
   h1,
@@ -83,26 +84,26 @@
   outline-offset: calc(var(--border-thin) * -1);
 }
 
-.page-editor-shell .ProseMirror section.ProseMirror-selectednode {
+.prosemirror-editor-shell .ProseMirror section.ProseMirror-selectednode {
   outline: 2px solid #08f !important;
 }
 
-.page-editor-shell .block-inspection {
+.prosemirror-editor-shell .block-inspection {
   display: block;
   padding: 0.25rem 0.5rem;
 }
 
-.page-editor-shell .ProseMirror .stack > * + * {
+.prosemirror-editor-shell .ProseMirror .stack > * + * {
   margin-block-start: var(--space, var(--s0));
 }
 
-.page-editor-shell > [role='toolbar'] .ProseMirror-menuitem button {
+.prosemirror-editor-shell > [role='toolbar'] .ProseMirror-menuitem button {
   box-sizing: border-box;
   block-size: 2.5rem;
   padding: 0.375rem 0.625rem;
 }
 
-.page-editor-shell > [role='toolbar'] .ProseMirror-menuitem > :is(
+.prosemirror-editor-shell > [role='toolbar'] .ProseMirror-menuitem > :is(
   .ProseMirror-menu-disabled,
   [aria-disabled='true']
 ) {
@@ -110,33 +111,33 @@
   cursor: not-allowed;
 }
 
-.page-editor-shell > [role='toolbar'] {
+.prosemirror-editor-shell > [role='toolbar'] {
   display: flex;
   flex-direction: column;
   align-items: stretch;
 }
 
-.page-editor-toolbar-group[data-toolbar-level='first'] {
+.prosemirror-editor-toolbar-group[data-toolbar-level='first'] {
   display: block;
   flex: 0 0 auto;
   inline-size: 100%;
 }
 
-.page-editor-toolbar-group [data-toolbar-level='second'] {
+.prosemirror-editor-toolbar-group [data-toolbar-level='second'] {
   display: inline-block;
 }
 
-.page-editor-shell > [role='toolbar'] .ProseMirror-menuitem .ProseMirror-icon svg {
+.prosemirror-editor-shell > [role='toolbar'] .ProseMirror-menuitem .ProseMirror-icon svg {
   display: block;
   block-size: 100%;
 }
 
-.page-editor-shell > [role='toolbar'] .ProseMirror-menuitem .ProseMirror-icon {
+.prosemirror-editor-shell > [role='toolbar'] .ProseMirror-menuitem .ProseMirror-icon {
   font-size: 1.75rem;
   line-height: 1;
 }
 
-.page-editor-shell.is-fullscreen {
+.prosemirror-editor-shell.is-fullscreen {
   position: fixed;
   z-index: 1000;
   inset: 0;
@@ -145,22 +146,53 @@
   background: var(--color-light, #fff);
 }
 
-.page-editor-shell > [role='toolbar'],
-.page-editor-shell .ProseMirror-breadcrumb-container {
+.prosemirror-editor-shell > [role='toolbar'],
+.prosemirror-editor-shell .ProseMirror-breadcrumb-container {
   position: fixed;
   inset-inline-start: var(--editor-shell-left);
   inline-size: var(--editor-shell-width);
   background: var(--color-light, #fff);
 }
 
-.page-editor-shell > [role='toolbar'] {
+.prosemirror-editor-shell > [role='toolbar'] {
   z-index: 2;
   inset-block-start: var(--editor-controls-top);
 }
 
-.page-editor-shell .ProseMirror-breadcrumb-container {
+.prosemirror-editor-shell .ProseMirror-breadcrumb-container {
   z-index: 1;
   inset-block-start: calc(
     var(--editor-controls-top) + var(--editor-toolbar-height)
   );
+}
+
+.prosemirror-editor-shell .prosemirror-modal-popup-backdrop {
+  position: fixed;
+  z-index: 1001;
+  inset: 0;
+  background: rgb(0 0 0 / 45%);
+}
+
+.prosemirror-editor-shell .prosemirror-modal-popup {
+  box-sizing: border-box;
+  inline-size: min(36rem, calc(100% - 2rem));
+  max-block-size: calc(100% - 2rem);
+  padding: 1.5rem;
+  overflow: auto;
+  background: var(--color-light, #fff);
+  box-shadow: 0 0.5rem 2rem rgb(0 0 0 / 30%);
+}
+
+.prosemirror-editor-shell .prosemirror-modal-popup__title {
+  margin: 0 3rem 1rem 0;
+}
+
+.prosemirror-editor-shell .prosemirror-modal-popup__close {
+  position: absolute;
+  inset-block-start: 0.75rem;
+  inset-inline-end: 0.75rem;
+  min-inline-size: 2rem;
+  min-block-size: 2rem;
+  font-size: 1.5rem;
+  line-height: 1;
 }

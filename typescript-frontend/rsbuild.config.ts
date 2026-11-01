@@ -63,7 +63,42 @@ export default defineConfig(({ env }) => {
         postcss: (_, { addPlugins }) => {
           addPlugins(
             prefixSelector({
-              prefix: '.editor',
+              prefix: '.prosemirror-editor-shell',
+              transform(prefix, selector) {
+                if (selector === ':root') {
+                  return prefix;
+                }
+                if (/^(?:\*|::?|[a-z])/i.test(selector)) {
+                  return `${prefix} ${selector}`;
+                }
+                return selector;
+              },
+            }),
+            { order: 'pre' },
+          );
+        },
+      },
+    },
+    playground: {
+      html: {
+        template: './src/playground.html',
+      },
+      source: {
+        entry: {
+          playground: './src/playground.ts',
+        },
+      },
+      output: {
+        distPath: {
+          root: 'dist/playground',
+        },
+        manifest: 'playground-manifest.json',
+      },
+      tools: {
+        postcss: (_, { addPlugins }) => {
+          addPlugins(
+            prefixSelector({
+              prefix: '#page-editor',
               transform(prefix, selector) {
                 if (selector === ':root') {
                   return prefix;
