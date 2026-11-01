@@ -8,7 +8,7 @@ Layout components.
 The public application and the editing experience share an Every Layout
 philosophy: compose small, configurable layout primitives instead of building
 one-off page structures. This keeps authored content and the application UI
-consistent while allowing each to use the same Box, Cover, Grid, Sidebar,
+consistent while allowing each to use the same Box, Cover, Grid, With sidebar,
 Stack, and related primitives.
 
 ## Development
@@ -20,6 +20,13 @@ host and ports with `HOST`, `DJANGO_PORT`, and `RSBUILD_PORT`, for example:
 ```sh
 python run.py parallel HOST=0.0.0.0 DJANGO_PORT=8001 RSBUILD_PORT=3001
 ```
+
+In parallel mode, Rsbuild writes development JavaScript assets to disk. When
+it emits updated JavaScript, the launcher restarts Django so admin asset
+manifests are reloaded. Changes to `assets/master_icons.svg` regenerate
+`typescript-frontend/src/icons.ts` automatically; unchanged generated output
+is not rewritten. Thus, a manual icon generation run restarts Django only when
+Rsbuild emits a changed bundle.
 
 The ports must be different. `HOST` controls where both servers listen; use
 `PUBLIC_HOST` when it differs from the address opened in a browser. For

@@ -9,6 +9,9 @@
 .space-s0 {
     --space: var(--s0);
 }
+.space-zero {
+    --space: 0;
+}
 .space-s1 {
     --space: var(--s1);
 }
@@ -43,6 +46,9 @@
 .padding-s0 {
     --padding: var(--s0);
 }
+.padding-zero {
+    --padding: 0;
+}
 .padding-s1 {
     --padding: var(--s1);
 }
@@ -76,6 +82,9 @@
 
 .gap-s0 {
     --gap: var(--s0);
+}
+.gap-zero {
+    --gap: 0;
 }
 .gap-s1 {
     --gap: var(--s1);
@@ -133,13 +142,79 @@
 .sidebar-width-24 {
     --sidebar-width: 24rem;
 }
+.sidebar-width-28 {
+    --sidebar-width: 28rem;
+}
+.sidebar-width-32 {
+    --sidebar-width: 32rem;
+}
 
-.sidebar-min-50 {
-    --min-inline-size: 50%;
+.content-min-50 {
+    --content-min-width: 50%;
 }
-.sidebar-min-66 {
-    --min-inline-size: 66.667%;
+.content-min-66 {
+    --content-min-width: 66.667%;
 }
-.sidebar-min-75 {
-    --min-inline-size: 75%;
+.content-min-75 {
+    --content-min-width: 75%;
+}
+
+.frame\:1-1 {
+    --n: 1;
+    --d: 1;
+}
+
+.frame\:4-3 {
+    --n: 4;
+    --d: 3;
+}
+
+.switcher\:max2 > :nth-last-child(n + 3),
+.switcher\:max2 > :nth-last-child(n + 3) ~ * {
+    flex-basis: 100%;
+}
+
+.switcher\:max3 > :nth-last-child(n + 4),
+.switcher\:max3 > :nth-last-child(n + 4) ~ * {
+    flex-basis: 100%;
+}
+
+.switcher\:max4 > :nth-last-child(n + 5),
+.switcher\:max4 > :nth-last-child(n + 5) ~ * {
+    flex-basis: 100%;
+}
+
+.switcher\:max5 > :nth-last-child(n + 6),
+.switcher\:max5 > :nth-last-child(n + 6) ~ * {
+    flex-basis: 100%;
+}
+
+.switcher\:max6 > :nth-last-child(n + 7),
+.switcher\:max6 > :nth-last-child(n + 7) ~ * {
+    flex-basis: 100%;
+}
+
+.switcher\:max7 > :nth-last-child(n + 8),
+.switcher\:max7 > :nth-last-child(n + 8) ~ * {
+    flex-basis: 100%;
+}
+
+.switcher-threshold-20 {
+    --threshold: 20rem;
+}
+
+.switcher-threshold-25 {
+    --threshold: 25rem;
+}
+
+.switcher-threshold-30 {
+    --threshold: 30rem;
+}
+
+.switcher-threshold-35 {
+    --threshold: 35rem;
+}
+
+.switcher-threshold-40 {
+    --threshold: 40rem;
 }

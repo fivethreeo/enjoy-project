@@ -2,7 +2,6 @@
 import sys
 import os
 import subprocess
-import threading
 import time
 
 # --- Helper Configuration ---
@@ -11,6 +10,10 @@ IS_WINDOWS = os.name == 'nt'
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 TS_DIR = os.path.join(ROOT_DIR, "typescript-frontend")
 PY_DIR = os.path.join(ROOT_DIR, "django-project")
+JAVASCRIPT_EMIT_DEBOUNCE_SECONDS = 3
+ICON_BUILD_DEBOUNCE_SECONDS = 1
+MASTER_ICONS_SVG = os.path.join(ROOT_DIR, "assets", "master_icons.svg")
+ICON_GENERATOR = os.path.join(ROOT_DIR, "assets", "make_svg_icon_sprites.py")
 
 if IS_WINDOWS:
     VENV_PYTHON = os.path.join(PY_DIR, ".venv", "Scripts", "python.exe")
@@ -69,6 +72,29 @@ def run_npm(args, envs, wait=True):
     cmd = ["npm", *args]
     run_command(cmd, cwd=TS_DIR, env_updates=envs, wait=wait)
 
+def newest_emitted_asset_mtime():
+    newest_mtime = 0
+    dist_dir = os.path.join(TS_DIR, "dist")
+    for root, _, files in os.walk(dist_dir):
+        for filename in files:
+            if filename.endswith(".js") or filename.endswith("manifest.json"):
+                newest_mtime = max(
+                    newest_mtime,
+                    os.stat(os.path.join(root, filename)).st_mtime_ns,
+                )
+    return newest_mtime
+
+def file_mtime(path):
+    return os.stat(path).st_mtime_ns
+
+def build_typescript_icons():
+    print("🎨 Master icon SVG changed; generating TypeScript icons...")
+    subprocess.run(
+        [sys.executable, ICON_GENERATOR, "--format", "ts"],
+        cwd=ROOT_DIR,
+        check=True,
+    )
+
 def run_parallel(args, envs):
     print("🚀 Starting both Python and TypeScript services in parallel...")
     print("💡 Press Ctrl+C at any time to shut down both.\n")
@@ -109,28 +135,54 @@ def run_parallel(args, envs):
     parallel_envs.setdefault("RSBUILD_BASE_URL", f"http://{public_url_host}:{rsbuild_port}")
     parallel_envs.setdefault("RSBUILD_HMR_HOST", public_host)
     
-    # Target threads to execute tasks concurrently
-    ts_thread = threading.Thread(
-        target=run_ts,
-        args=(["--host", host, "--port", str(rsbuild_port), *args], parallel_envs, False),
-        daemon=True,
+    def start_process(command, cwd):
+        process = subprocess.Popen(command, cwd=cwd, env={**os.environ, **parallel_envs})
+        active_processes.append(process)
+        return process
+
+    def start_django():
+        return start_process(
+            [VENV_PYTHON, "manage.py", "runserver", f"{url_host}:{django_port}", *args],
+            PY_DIR,
+        )
+
+    emitted_asset_mtime = newest_emitted_asset_mtime()
+    restart_django_at = None
+    master_icons_mtime = file_mtime(MASTER_ICONS_SVG)
+    build_icons_at = None
+    ts_process = start_process(
+        ["npm", "run", "dev", "--", "--host", host, "--port", str(rsbuild_port), *args],
+        TS_DIR,
     )
-    py_thread = threading.Thread(
-        target=run_py,
-        args=([f"{url_host}:{django_port}", *args], parallel_envs, False),
-        daemon=True,
-    )
-    
-    ts_thread.start()
-    py_thread.start()
-    
-    # Keep the main process alive to intercept Ctrl+C signals cleanly
+    django_process = start_django()
+
     try:
         while True:
             time.sleep(0.5)
-            # If any process terminated prematurely on its own, stop the execution loop
-            if any(p.poll() is not None for p in active_processes):
+            if ts_process.poll() is not None or django_process.poll() is not None:
                 break
+            latest_master_icons_mtime = file_mtime(MASTER_ICONS_SVG)
+            if latest_master_icons_mtime > master_icons_mtime:
+                master_icons_mtime = latest_master_icons_mtime
+                build_icons_at = time.monotonic() + ICON_BUILD_DEBOUNCE_SECONDS
+            if build_icons_at is not None and time.monotonic() >= build_icons_at:
+                build_icons_at = None
+                try:
+                    build_typescript_icons()
+                except subprocess.CalledProcessError as error:
+                    print(f"❌ TypeScript icon generation failed: {error}")
+            latest_asset_mtime = newest_emitted_asset_mtime()
+            if latest_asset_mtime > emitted_asset_mtime:
+                emitted_asset_mtime = latest_asset_mtime
+                restart_django_at = time.monotonic() + JAVASCRIPT_EMIT_DEBOUNCE_SECONDS
+            if restart_django_at is None or time.monotonic() < restart_django_at:
+                continue
+            restart_django_at = None
+            print("🔄 JavaScript emitted; restarting Django...")
+            django_process.terminate()
+            django_process.wait()
+            active_processes.remove(django_process)
+            django_process = start_django()
     except KeyboardInterrupt:
         print("\n🛑 Shutting down all services gracefully...")
     finally:

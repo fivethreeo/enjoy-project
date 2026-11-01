@@ -19,8 +19,8 @@ export default defineConfig(({ env }) => {
       ...(hmrHost ? { host: hmrHost } : {}),
       port: '<port>',
     },
-    // Write files (including manifest.json) to disk so Django can read the manifest in dev too
-    writeToDisk: (file) => file.endsWith('manifest.json'),
+    // Django reads manifests and the parallel launcher watches emitted JavaScript in development.
+    writeToDisk: true,
   },
   server: {
     port: 3000,

@@ -10,9 +10,4 @@
   flex-grow: 1;
   flex-basis: calc((var(--threshold) - 100%) * 999);
 }
-
-.switcher\:max5 > :nth-last-child(n + 6),
-.switcher\:max5 > :nth-last-child(n + 6) ~ * {
-  flex-basis: 100%;
-}
   

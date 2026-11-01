@@ -1,0 +1,166 @@
+.page-editor-shell {
+  --editor-controls-top: 0px;
+  --editor-toolbar-height: 0px;
+  --editor-controls-height: 0px;
+  align-self: stretch;
+  inline-size: 100%;
+  min-inline-size: 0;
+  padding-block-start: var(--editor-controls-height);
+  font-family: sans-serif;
+  font-size: 1.25rem;
+  line-height: 1.5;
+}
+
+.page-editor-shell .ProseMirror.editor {
+  font-family: sans-serif;
+  font-size: 1.25rem;
+  line-height: 1.5;
+}
+
+.page-editor-shell .ProseMirror.editor :is(
+  p,
+  blockquote,
+  ul,
+  ol,
+  li,
+  pre,
+  code,
+  a,
+  strong,
+  em
+) {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.page-editor-shell :is(button, input, select, textarea),
+.page-editor-shell .ProseMirror-menu-dropdown-menu {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.page-editor-shell .ProseMirror :is(h1, h2, h3) {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: 400;
+  line-height: 1.1;
+}
+
+.page-editor-shell > :not([role='toolbar']),
+.page-editor-shell .ProseMirror-menubar-wrapper,
+.page-editor-shell > [role='toolbar'],
+.page-editor-shell .ProseMirror-breadcrumb-container {
+  max-inline-size: none;
+}
+
+.page-editor-shell > :not([role='toolbar']),
+.page-editor-shell .ProseMirror-menubar-wrapper {
+  inline-size: 100%;
+}
+
+.page-editor-shell.show-block-outlines .ProseMirror .box {
+  outline-color: rgb(0 0 0 / 20%);
+}
+
+.page-editor-shell.show-block-outlines .ProseMirror :is(
+  section,
+  p,
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  blockquote,
+  pre,
+  ul,
+  ol,
+  li,
+  hr
+) {
+  outline: var(--border-thin) solid rgb(0 0 0 / 20%);
+  outline-offset: calc(var(--border-thin) * -1);
+}
+
+.page-editor-shell .ProseMirror section.ProseMirror-selectednode {
+  outline: 2px solid #08f !important;
+}
+
+.page-editor-shell .block-inspection {
+  display: block;
+  padding: 0.25rem 0.5rem;
+}
+
+.page-editor-shell .ProseMirror .stack > * + * {
+  margin-block-start: var(--space, var(--s0));
+}
+
+.page-editor-shell > [role='toolbar'] .ProseMirror-menuitem button {
+  box-sizing: border-box;
+  block-size: 2.5rem;
+  padding: 0.375rem 0.625rem;
+}
+
+.page-editor-shell > [role='toolbar'] .ProseMirror-menuitem > :is(
+  .ProseMirror-menu-disabled,
+  [aria-disabled='true']
+) {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.page-editor-shell > [role='toolbar'] {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.page-editor-toolbar-group[data-toolbar-level='first'] {
+  display: block;
+  flex: 0 0 auto;
+  inline-size: 100%;
+}
+
+.page-editor-toolbar-group [data-toolbar-level='second'] {
+  display: inline-block;
+}
+
+.page-editor-shell > [role='toolbar'] .ProseMirror-menuitem .ProseMirror-icon svg {
+  display: block;
+  block-size: 100%;
+}
+
+.page-editor-shell > [role='toolbar'] .ProseMirror-menuitem .ProseMirror-icon {
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.page-editor-shell.is-fullscreen {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  box-sizing: border-box;
+  overflow: auto;
+  background: var(--color-light, #fff);
+}
+
+.page-editor-shell > [role='toolbar'],
+.page-editor-shell .ProseMirror-breadcrumb-container {
+  position: fixed;
+  inset-inline-start: var(--editor-shell-left);
+  inline-size: var(--editor-shell-width);
+  background: var(--color-light, #fff);
+}
+
+.page-editor-shell > [role='toolbar'] {
+  z-index: 2;
+  inset-block-start: var(--editor-controls-top);
+}
+
+.page-editor-shell .ProseMirror-breadcrumb-container {
+  z-index: 1;
+  inset-block-start: calc(
+    var(--editor-controls-top) + var(--editor-toolbar-height)
+  );
+}

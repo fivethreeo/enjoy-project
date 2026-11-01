@@ -1,4 +1,2 @@
-import { initEveryLayout } from './everylayout/init';
+import './everylayout.scss';
 import './prosemirror-editor';
-
-initEveryLayout();

@@ -24,6 +24,22 @@
   flex: 0 0 auto;
 }
 
+.reel.box {
+  padding: 0
+}
+
+.reel.box > * {
+  margin: var(--padding);
+  margin-inline-end: 0;
+}
+.reel.box > * + * {
+  margin-inline-start: var(--gap, var(--s0));
+}
+.reel.box::after {
+  content: "";
+  flex-basis: var(--padding);
+  flex-shrink: 0;
+}
 
 .reel > img {
   block-size: 100%;
@@ -35,15 +51,16 @@
   margin-inline-start: var(--gap, var(--s0));
 }
 
-.reel.overflowing {
+.reel.overflowing:not(.box) {
   padding-block-end: var(--gap, var(--s0));
 }
+
 
 .reel.overflowing + .instruction {
   display: block;
 }
 
 .instruction {
-  margin-block-start: var(--s-2) !important;
+  margin-block-start: var(--s-1) !important;
   display: none;
 }

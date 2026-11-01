@@ -34,7 +34,7 @@ if (rootEl) {
         </section>
 
         <section class="center stack space-s3" id="approach" aria-labelledby="approach-title">
-          <div class="with-sidebar with-sidebar:left sidebar-width-16 sidebar-min-66 gap-s2">
+          <div class="with-sidebar with-sidebar:left sidebar-width-16 content-min-66 gap-s2">
             <aside class="box box:raised stack padding-s0 space-s0">
               <p>01 / integration</p>
               <p>Bring structured editing into the Django tools your team already uses.</p>
@@ -69,7 +69,7 @@ if (rootEl) {
         </section>
 
         <section class="center stack space-s3" id="principles" aria-labelledby="principles-title">
-          <div class="with-sidebar with-sidebar:right sidebar-width-20 sidebar-min-66 gap-s2">
+          <div class="with-sidebar with-sidebar:right sidebar-width-20 content-min-66 gap-s2">
             <div class="stack space-s0">
               <p>02 / shared layout system</p>
               <h2 id="principles-title">The app and editor speak the same Every Layout language.</h2>
@@ -84,7 +84,7 @@ if (rootEl) {
             <article class="box box:raised stack padding-s0 space-s0">
               <p>Primitives</p>
               <h3>Compose instead of custom-build.</h3>
-              <p>Box, Stack, Grid, Sidebar, and Cover provide a small, configurable vocabulary for content.</p>
+              <p>Box, Stack, Grid, With sidebar, and Cover provide a small, configurable vocabulary for content.</p>
             </article>
             <article class="box box:raised box:invert stack padding-s0 space-s0">
               <p>Consistency</p>
@@ -117,7 +117,7 @@ if (rootEl) {
         <div class="center">
           <div class="cluster cluster:between cluster:center gap-s0">
             <a href="/" aria-label="Prosango home">prosango.</a>
-            <p>ProseMirror, Django, and Every Layout.</p>
+            <p>ProseMirror, django-admin, django-filer, and Every Layout.</p>
           </div>
         </div>
       </footer>
