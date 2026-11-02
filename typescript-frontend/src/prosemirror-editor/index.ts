@@ -1,18 +1,18 @@
 import { DOMParser } from 'prosemirror-model';
 import type { EditorView } from 'prosemirror-view';
 import {
-  mountPageEditor,
-  pageDocumentFromJSON,
-} from './page-editor';
+  mountEveryLayoutEditor,
+  everyLayoutDocumentFromJSON,
+} from './everylayout-editor';
 import { richTextSchema } from './setup';
 
-export * from './page-editor';
+export * from './everylayout-editor';
 
 function initialDocument(element: HTMLTextAreaElement) {
   try {
     const stored = JSON.parse(element.value) as { version?: number; document?: unknown };
     if (stored.version === 1 && stored.document) {
-      return pageDocumentFromJSON(stored.document);
+      return everyLayoutDocumentFromJSON(stored.document);
     }
   } catch {
     // Existing Page content is HTML and becomes the first text block.
@@ -21,7 +21,7 @@ function initialDocument(element: HTMLTextAreaElement) {
   const content = document.createElement('div');
   content.innerHTML = element.value;
   const richDocument = DOMParser.fromSchema(richTextSchema).parse(content);
-  return pageDocumentFromJSON(richDocument.toJSON());
+  return everyLayoutDocumentFromJSON(richDocument.toJSON());
 }
 
 function save(editor: EditorView, element: HTMLTextAreaElement) {
@@ -34,7 +34,7 @@ export function setupEditor(element: HTMLTextAreaElement): EditorView {
   const shell = document.createElement('section');
   element.insertAdjacentElement('afterend', shell);
   element.hidden = true;
-  return mountPageEditor({
+  return mountEveryLayoutEditor({
     mount: shell,
     initialDocument: initialDocument(element),
     onChange: ({ view }) => save(view, element),

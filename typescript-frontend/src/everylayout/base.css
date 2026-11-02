@@ -26,6 +26,8 @@
 
 
   --measure: 60ch;
+  --measure-md: 45ch;
+  --measure-sm: 30ch;
 
   --border-thin: 1px;
 
@@ -47,23 +49,6 @@
 
 [hidden]+* {
   margin-block-start: 0 !important;
-}
-
-* {
-  max-inline-size: var(--measure);
-}
-
-html,
-body,
-div,
-header,
-nav,
-main,
-section,
-article,
-aside,
-footer {
-  max-inline-size: none;
 }
 
 html, body {

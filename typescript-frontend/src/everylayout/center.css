@@ -17,3 +17,7 @@
   align-items: center;
   max-inline-size: none !important;
 }
+
+.center\:intrinsic > .grid {
+  inline-size: 100%;
+}

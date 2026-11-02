@@ -6,6 +6,10 @@ const assetPrefix = process.env.RSBUILD_BASE_URL;
 const corsOrigin = process.env.RSBUILD_CORS_ORIGIN;
 const hmrHost = process.env.RSBUILD_HMR_HOST;
 
+function environmentAssetPrefix(path: string) {
+  return assetPrefix ? `${assetPrefix}${path}` : path;
+}
+
 // Docs: https://rsbuild.rs/config/
 export default defineConfig(({ env }) => {
   const isDevelopment = env === 'development';
@@ -45,6 +49,8 @@ export default defineConfig(({ env }) => {
     },
     editor: {
       dev: {
+        // Each environment owns its runtime and HMR update namespace.
+        assetPrefix: environmentAssetPrefix('/editor'),
         hmr: false,
         liveReload: false,
       },
@@ -80,6 +86,10 @@ export default defineConfig(({ env }) => {
       },
     },
     playground: {
+      dev: {
+        // Do not load the app environment's runtime at /static/js/runtime.js.
+        assetPrefix: environmentAssetPrefix('/playground'),
+      },
       html: {
         template: './src/playground.html',
       },
@@ -98,7 +108,7 @@ export default defineConfig(({ env }) => {
         postcss: (_, { addPlugins }) => {
           addPlugins(
             prefixSelector({
-              prefix: '#page-editor',
+              prefix: '#everylayout-editor',
               transform(prefix, selector) {
                 if (selector === ':root') {
                   return prefix;

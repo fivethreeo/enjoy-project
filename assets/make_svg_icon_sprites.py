@@ -159,14 +159,6 @@ def _assert_icon_registry_complete(icons, guide_ids):
             + ", ".join(missing_sidebar)
         )
 
-    print(
-        f"Verified {len(icon_ids)} icon registry entries from "
-        f"{len(guide_ids)} named guides, including: "
-        + ", ".join(sorted(sidebar_ids))
-    )
-    print("Verified guide icon names: " + ", ".join(sorted(guide_ids)))
-
-
 def _flatten_svg(source_tree, output_svg, guide_ids):
     source_tree = copy.deepcopy(source_tree)
     for parent in source_tree.getroot().iter():
@@ -207,13 +199,15 @@ def _run_inkscape(input_svg, output_svg, actions):
         f"--export-filename={output_svg}",
     ]
     try:
-        print(shlex.join(command), flush=True)
         result = subprocess.run(command, capture_output=True, text=True)
     except FileNotFoundError as error:
         raise RuntimeError("Inkscape must be installed and available on PATH.") from error
     if result.returncode:
         details = (result.stderr or result.stdout).strip()
-        message = f"Inkscape failed while applying actions: {actions!r}."
+        message = (
+            f"Inkscape failed while applying actions: {actions!r}.\n"
+            f"Command: {shlex.join(command)}"
+        )
         if details:
             message = f"{message}\n{details}"
         raise RuntimeError(message)
@@ -224,13 +218,15 @@ def _run_inkscape(input_svg, output_svg, actions):
 def _path_bounds(svg_path):
     command = ["inkscape", str(svg_path), "--query-all"]
     try:
-        print(shlex.join(command), flush=True)
         result = subprocess.run(command, capture_output=True, text=True)
     except FileNotFoundError as error:
         raise RuntimeError("Inkscape must be installed and available on PATH.") from error
     if result.returncode:
         details = (result.stderr or result.stdout).strip()
-        message = f"Inkscape failed while querying paths in '{svg_path}'."
+        message = (
+            f"Inkscape failed while querying paths in '{svg_path}'.\n"
+            f"Command: {shlex.join(command)}"
+        )
         if details:
             message = f"{message}\n{details}"
         raise RuntimeError(message)

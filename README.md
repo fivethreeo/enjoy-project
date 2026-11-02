@@ -28,6 +28,11 @@ manifests are reloaded. Changes to `assets/master_icons.svg` regenerate
 is not rewritten. Thus, a manual icon generation run restarts Django only when
 Rsbuild emits a changed bundle.
 
+The standalone editor playground remains available directly from Rsbuild at
+`http://<PUBLIC_HOST>:<RSBUILD_PORT>/playground.html`. Its runtime and HMR
+assets are served under `/playground/`, independently of the Django app and
+editor environments.
+
 The ports must be different. `HOST` controls where both servers listen; use
 `PUBLIC_HOST` when it differs from the address opened in a browser. For
 example, to bind on all interfaces while accessing the application from the

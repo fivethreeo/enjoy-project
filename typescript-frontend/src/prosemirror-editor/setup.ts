@@ -45,11 +45,23 @@ const layoutLabels: Record<keyof typeof layoutClasses, string> = {
 export const frameRatios = ['16-9', '1-1', '4-3'] as const;
 export type FrameRatio = typeof frameRatios[number];
 export const defaultFrameRatio: FrameRatio = '16-9';
+export const measures = ['lg', 'md', 'sm'] as const;
+export type Measure = typeof measures[number];
+export const defaultMeasure: Measure = 'lg';
+export const gridMinimums = [16, 20, 24, 28, 32] as const;
+export type GridMinimum = typeof gridMinimums[number];
+export const defaultGridMinimum: GridMinimum = 16;
 
 export function normalizeFrameRatio(value: unknown): FrameRatio {
   return frameRatios.includes(value as FrameRatio)
     ? value as FrameRatio
     : defaultFrameRatio;
+}
+
+export function normalizeGridMinimum(value: unknown): GridMinimum {
+  return gridMinimums.includes(value as GridMinimum)
+    ? value as GridMinimum
+    : defaultGridMinimum;
 }
 
 export const baseBlockTags = [
@@ -77,32 +89,60 @@ function paddingClass(padding: number | typeof zeroSpace) {
   return padding === zeroSpace ? 'padding-zero' : `padding-s${padding}`;
 }
 
+function measureClass(value: unknown): Measure {
+  return measures.includes(value as Measure)
+    ? value as Measure
+    : defaultMeasure;
+}
+
 const centeredNodeAttrs = {
   id: { default: null },
   center: { default: false },
   centerIntrinsic: { default: true },
+  measure: { default: null },
   centerText: { default: false },
+  box: { default: false },
   padding: { default: 1 },
+  boxInvert: { default: false },
+  boxBorder: { default: false },
 };
 const preservedTextBlockAttrs = [
   'id',
   'coverMain',
   'center',
   'centerIntrinsic',
+  'measure',
   'centerText',
+  'box',
   'padding',
+  'boxInvert',
+  'boxBorder',
 ] as const;
 
 function centeredNodeClasses(node: Parameters<NonNullable<NodeSpec['toDOM']>>[0]) {
-  if (!node.attrs.center) {
-    return undefined;
+  const classes = node.attrs.measure ? [`measure:${measureClass(node.attrs.measure)}`] : [];
+  if (node.attrs.box) {
+    classes.push('box');
+    if (node.attrs.boxInvert) {
+      classes.push('box:invert');
+    }
+    if (node.attrs.boxBorder) {
+      classes.push('box:border');
+    }
   }
-  return [
-    'center',
-    paddingClass(node.attrs.padding),
-    ...(node.attrs.centerIntrinsic ? ['center:intrinsic'] : []),
-    ...(node.attrs.centerText ? ['center:text'] : []),
-  ].join(' ');
+  if (node.attrs.center) {
+    classes.push('center');
+    if (node.attrs.centerIntrinsic) {
+      classes.push('center:intrinsic');
+    }
+    if (node.attrs.centerText) {
+      classes.push('center:text');
+    }
+  }
+  if (node.attrs.box || node.attrs.center) {
+    classes.push(paddingClass(node.attrs.padding));
+  }
+  return classes.length > 0 ? classes.join(' ') : undefined;
 }
 
 function baseBlockClasses(node: Parameters<NonNullable<NodeSpec['toDOM']>>[0]) {
@@ -112,11 +152,20 @@ function baseBlockClasses(node: Parameters<NonNullable<NodeSpec['toDOM']>>[0]) {
   const hasLayout = (layout: keyof typeof layoutClasses) => layouts.includes(layout);
   const classes: string[] = layouts.map((layout) => layoutClasses[layout]);
 
+  if (node.attrs.measure) {
+    classes.push(`measure:${measureClass(node.attrs.measure)}`);
+  }
   if (hasLayout('stack') || hasLayout('cover')) {
     classes.push(spaceClass(node.attrs.space));
   }
   if (hasLayout('box') || hasLayout('center')) {
     classes.push(paddingClass(node.attrs.padding));
+  }
+  if (hasLayout('box') && node.attrs.boxInvert) {
+    classes.push('box:invert');
+  }
+  if (hasLayout('box') && node.attrs.boxBorder) {
+    classes.push('box:border');
   }
   if (hasLayout('center')) {
     if (node.attrs.centerIntrinsic) {
@@ -136,7 +185,7 @@ function baseBlockClasses(node: Parameters<NonNullable<NodeSpec['toDOM']>>[0]) {
     classes.push(gapClass(node.attrs.gap));
   }
   if (hasLayout('grid')) {
-    classes.push(`grid-min-${node.attrs.gridMin}`);
+    classes.push(`grid-min-${normalizeGridMinimum(node.attrs.gridMin)}`);
   }
   if (hasSidebarLayout(layouts)) {
     if (node.attrs.sidebarPosition === 'right') {
@@ -177,10 +226,13 @@ function baseBlock(): NodeSpec {
       coverMain: { default: false },
       space: { default: 1 },
       padding: { default: 1 },
+      boxInvert: { default: false },
+      boxBorder: { default: false },
       centerIntrinsic: { default: true },
+      measure: { default: null },
       centerText: { default: false },
       gap: { default: 1 },
-      gridMin: { default: 16 },
+      gridMin: { default: defaultGridMinimum },
       sidebarBreakpoint: { default: 66 },
       sidebarWidth: { default: 'auto' },
       sidebarPosition: { default: 'left' },
@@ -215,7 +267,7 @@ function preserveTextBlockAttrs() {
 
       let transaction: Transaction | null = null;
       oldState.doc.descendants((node, position) => {
-        if (!['paragraph', 'heading'].includes(node.type.name)) {
+        if (!['paragraph', 'heading', 'blockquote'].includes(node.type.name)) {
           return;
         }
         const mappedPosition = transactions.reduce(
@@ -227,7 +279,7 @@ function preserveTextBlockAttrs() {
         const updatedNode = newState.doc.nodeAt(mappedPosition);
         if (
           !updatedNode
-          || !['paragraph', 'heading'].includes(updatedNode.type.name)
+          || !['paragraph', 'heading', 'blockquote'].includes(updatedNode.type.name)
           || updatedNode.type === node.type
         ) {
           return;
@@ -405,7 +457,7 @@ function reelOverflowPlugin() {
   });
 }
 
-export const pageSchema = new Schema({
+export const everyLayoutSchema = new Schema({
   nodes: richTextNodes
     .update('paragraph', {
       attrs: {
@@ -476,8 +528,8 @@ export function prosemirrorEditorShellPlugin(shell: HTMLElement): Plugin {
   });
 }
 
-/** Builds the standard page-editor plugins for the schema mounted by a host. */
-export function pagePlugins(schema: Schema, shell: HTMLElement): Plugin[] {
+/** Builds the standard Every Layout editor plugins for the schema mounted by a host. */
+export function everyLayoutPlugins(schema: Schema, shell: HTMLElement): Plugin[] {
   return [
     ...exampleSetup({ schema, menuBar: false }),
     prosemirrorEditorShellPlugin(shell),
@@ -487,6 +539,9 @@ export function pagePlugins(schema: Schema, shell: HTMLElement): Plugin[] {
     breadcrumbPlugin({
       showMarks: true,
       displayName(node) {
+        if (node.type.name === 'heading') {
+          return `h${node.attrs.level}`;
+        }
         if (node.type.name !== 'base_block') {
           return node.type.name;
         }

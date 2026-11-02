@@ -4,7 +4,7 @@
   gap: var(--gap, var(--s0));
 }
 
-@supports (width: min(1px, 100%)) {
+@supports (width: min(250px, 100%)) {
   .grid {
     grid-template-columns: repeat(
       auto-fit,
@@ -12,4 +12,3 @@
     );
   }
 }
-  

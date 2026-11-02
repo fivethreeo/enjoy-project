@@ -16,9 +16,19 @@ Start the dev server, and the app will be available at [http://localhost:3000](h
 npm run dev
 ```
 
-The standalone page-editor playground is available at
+The standalone Every Layout editor playground is available at
 [http://localhost:3000/playground/playground](http://localhost:3000/playground/playground).
 It runs entirely in Rsbuild and does not need Django.
+
+Center measures use the `measure:lg` (60ch), `measure:md` (45ch), and
+`measure:sm` (30ch) classes, progressing from largest to smallest.
+
+Grid minimums are `16rem`, `20rem`, `24rem`, `28rem`, and `32rem`. Stored
+documents using the retired `gridMin: 12` value are normalized to `16`.
+
+When a Base Block has the Box component, its modifier row can invert the
+Box's foreground/background or add its border. These persist as `boxInvert`
+and `boxBorder` and emit the scoped `box:invert` and `box:border` classes.
 
 Build the app for production:
 

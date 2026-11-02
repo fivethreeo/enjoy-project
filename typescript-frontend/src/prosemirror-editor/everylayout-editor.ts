@@ -25,15 +25,20 @@ import {
 } from './example-menu-icons';
 import {
   baseBlockTags,
+  defaultMeasure,
   frameRatios,
+  gridMinimums,
+  measures,
   normalizeFrameRatio,
-  pagePlugins,
-  pageSchema,
+  normalizeGridMinimum,
+  everyLayoutPlugins,
+  everyLayoutSchema,
   type BaseBlockTag,
   type FrameRatio,
+  type Measure,
 } from './setup';
 
-export { pageSchema } from './setup';
+export { everyLayoutSchema } from './setup';
 
 const layoutOptions = [
   'box',
@@ -50,22 +55,35 @@ const layoutOptions = [
 type LayoutOption = typeof layoutOptions[number];
 const zeroSpace = 'zero';
 const spaceValues = [zeroSpace, -4, -3, -2, -1, 0, 1, 2, 3] as const;
-const gridMinimums = [12, 16, 20, 24];
 const sidebarBreakpoints = [50, 66, 75];
 const sidebarWidths = ['auto', 12, 16, 20, 24, 28, 32] as const;
 const switcherMaximums = [2, 3, 4, 5, 6, 7];
 const switcherThresholds = [20, 25, 30, 35, 40];
 type ControlValue = number | typeof zeroSpace;
 type SidebarWidth = typeof sidebarWidths[number];
-type CenterTarget = {
+type MeasureTarget = {
   node: ProseMirrorNode;
   from: number;
   baseBlock: boolean;
 };
+
+function normalizeMeasure(value: unknown): Measure {
+  return measures.includes(value as Measure)
+    ? value as Measure
+    : defaultMeasure;
+}
+
+function stepMeasure(measure: Measure, direction: -1 | 1) {
+  const index = measures.indexOf(measure);
+  return measures[Math.max(
+    0,
+    Math.min(measures.length - 1, index - direction),
+  )] as Measure;
+}
 function modifierIconName(
   attribute: string,
   direction: -1 | 1,
-) {
+): IconName | undefined {
   if (attribute === 'space') {
     return direction < 0 ? 'decreasespace' : 'increasespace';
   }
@@ -74,6 +92,9 @@ function modifierIconName(
   }
   if (attribute === 'padding') {
     return direction < 0 ? 'decreasepadding' : 'increasepadding';
+  }
+  if (attribute === 'gridMin') {
+    return direction < 0 ? 'decreasegridmin' : 'increasegridmin';
   }
   if (attribute === 'sidebarBreakpoint') {
     return direction < 0
@@ -307,7 +328,13 @@ function updateBlockLayout(
       layout,
     ]
     : layouts.filter((current) => current !== layout);
-  const attrs = { ...selectedBlock.node.attrs, layouts: nextLayouts };
+  const attrs = {
+    ...selectedBlock.node.attrs,
+    layouts: nextLayouts,
+    ...(addingLayout && layout === 'center' && selectedBlock.node.attrs.measure
+      ? { centerIntrinsic: false }
+      : {}),
+  };
 
   if (addingLayout && isEmptyBlock(selectedBlock.node)) {
     const transaction = editor.state.tr.replaceWith(
@@ -324,50 +351,6 @@ function updateBlockLayout(
     editor,
     editor.state.tr.setNodeMarkup(selectedBlock.from, undefined, attrs),
   );
-}
-
-function migrateBaseBoxNodes(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(migrateBaseBoxNodes);
-  }
-  if (!value || typeof value !== 'object') {
-    return value;
-  }
-
-  const node = value as {
-    type?: unknown;
-    attrs?: Record<string, unknown>;
-    content?: unknown[];
-  };
-  const isBaseBlock = node.type === 'base_block' || node.type === 'base_box';
-  const legacyLayouts = isBaseBlock && Array.isArray(node.attrs?.layouts)
-    ? node.attrs.layouts
-    : null;
-  const attrs = node.attrs && isBaseBlock
-    ? {
-      ...node.attrs,
-      layouts: legacyLayouts
-        ? [...new Set(legacyLayouts.map((layout) => (
-          layout === 'sidebarLeft' || layout === 'sidebarRight' ? 'sidebar' : layout
-        )))]
-        : node.attrs.layouts,
-      sidebarPosition: legacyLayouts?.includes('sidebarRight')
-        ? 'right'
-        : node.attrs.sidebarPosition === 'right'
-          ? 'right'
-          : 'left',
-      sidebarWidth: node.attrs.sidebarWidth ?? 'auto',
-      frameRatio: normalizeFrameRatio(node.attrs.frameRatio),
-    }
-    : node.attrs;
-  return {
-    ...node,
-    ...(node.type === 'base_box' ? { type: 'base_block' } : {}),
-    ...(attrs ? { attrs } : {}),
-    ...(Array.isArray(node.content)
-      ? { content: node.content.map(migrateBaseBoxNodes) }
-      : {}),
-  };
 }
 
 function paragraphEnd(state: EditorState) {
@@ -402,7 +385,7 @@ function selectedBaseBlock(state: EditorState) {
     : null;
 }
 
-function selectedDirectCenterNode(state: EditorState): CenterTarget | null {
+function selectedDirectMeasureNode(state: EditorState): MeasureTarget | null {
   const { selection } = state;
   if (
     selection instanceof NodeSelection
@@ -429,7 +412,7 @@ function selectedDirectCenterNode(state: EditorState): CenterTarget | null {
   return null;
 }
 
-function selectedCenterTarget(state: EditorState): CenterTarget | null {
+function selectedMeasureTarget(state: EditorState): MeasureTarget | null {
   const block = selectedBaseBlock(state);
   if (block) {
     return {
@@ -438,13 +421,31 @@ function selectedCenterTarget(state: EditorState): CenterTarget | null {
       baseBlock: true,
     };
   }
-  return selectedDirectCenterNode(state);
+  return selectedDirectMeasureNode(state);
 }
 
-function centerIsActive(target: CenterTarget) {
+function centerIsActive(target: MeasureTarget) {
   return target.baseBlock
     ? (target.node.attrs.layouts as LayoutOption[]).includes('center')
     : target.node.attrs.center;
+}
+
+function boxIsActive(target: MeasureTarget) {
+  return target.baseBlock
+    ? (target.node.attrs.layouts as LayoutOption[]).includes('box')
+    : target.node.attrs.box;
+}
+
+function toggleBox(schema: Schema, editor: EditorView, target: MeasureTarget) {
+  if (target.baseBlock) {
+    const block = selectedBaseBlock(editor.state);
+    if (block) updateBlockLayout(schema, editor, block, 'box');
+    return;
+  }
+  dispatchStructuralEdit(editor, editor.state.tr.setNodeMarkup(target.from, undefined, {
+    ...target.node.attrs,
+    box: !target.node.attrs.box,
+  }));
 }
 
 function dispatchStructuralEdit(editor: EditorView, transaction: EditorState['tr']) {
@@ -619,13 +620,27 @@ function nodeInspection(node: NodeSelection['node']) {
     if (node.attrs.ariaDescribedBy) {
       details.push(`aria-describedby: ${node.attrs.ariaDescribedBy}`);
     }
+    const components = [
+      ...(node.attrs.box ? ['Box'] : []),
+      ...(node.attrs.center ? ['Center'] : []),
+    ];
+    details.push(`Components: ${components.length > 0 ? components.join(', ') : 'none'}`);
+    if (node.attrs.box) {
+      details.push(`Box padding: ${formatScaleValue(node.attrs.padding)}`);
+      if (node.attrs.boxInvert) {
+        details.push('Box: inverted');
+      }
+      if (node.attrs.boxBorder) {
+        details.push('Box: bordered');
+      }
+    }
     if (node.attrs.center) {
-      details.push('Components: center');
       details.push(`Center padding: ${formatScaleValue(node.attrs.padding)}`);
-      details.push(`center: ${node.attrs.centerIntrinsic ? 'intrinsic' : 'measure'}`);
+      details.push(`Center: ${node.attrs.centerIntrinsic ? 'intrinsic' : 'measured'}`);
       details.push(`text: ${node.attrs.centerText ? 'centered' : 'default'}`);
-    } else {
-      details.push('Components: none');
+    }
+    if (node.attrs.measure) {
+      details.push(`Measure: ${normalizeMeasure(node.attrs.measure)}`);
     }
     if (node.attrs.coverMain) {
       details.push('cover main');
@@ -649,6 +664,20 @@ function nodeInspection(node: NodeSelection['node']) {
   if (layouts.includes('box') || layouts.includes('center')) {
     details.push(`${modifierLabel('padding', layouts)}: ${formatScaleValue(node.attrs.padding)}`);
   }
+  if (layouts.includes('box')) {
+    if (node.attrs.boxInvert) {
+      details.push('Box: inverted');
+    }
+    if (node.attrs.boxBorder) {
+      details.push('Box: bordered');
+    }
+  }
+  if (layouts.includes('center')) {
+    details.push(`Center: ${node.attrs.centerIntrinsic ? 'intrinsic' : 'measured'}`);
+  }
+  if (node.attrs.measure) {
+    details.push(`Measure: ${normalizeMeasure(node.attrs.measure)}`);
+  }
   if (
     layouts.includes('cluster')
     || layouts.includes('grid')
@@ -659,7 +688,7 @@ function nodeInspection(node: NodeSelection['node']) {
     details.push(`${modifierLabel('gap', layouts)}: ${formatScaleValue(node.attrs.gap)}`);
   }
   if (layouts.includes('grid')) {
-    details.push(`Grid minimum: ${node.attrs.gridMin}rem`);
+    details.push(`Grid minimum: ${normalizeGridMinimum(node.attrs.gridMin)}rem`);
   }
   if (hasSidebarLayout(layouts)) {
     details.push(
@@ -689,12 +718,12 @@ function nodeInspection(node: NodeSelection['node']) {
   return details.join(' • ');
 }
 
-export type PageEditorChangeContext = {
+export type EveryLayoutEditorChangeContext = {
   document: ProseMirrorNode;
   view: EditorView;
 };
 
-export type PageEditorPluginContext = {
+export type EveryLayoutEditorPluginContext = {
   schema: Schema;
   shell: HTMLElement;
 };
@@ -703,31 +732,31 @@ export type PageEditorPluginContext = {
  * The outer arrays are toolbar rows; each inner array is passed to
  * `renderGrouped`, so its item boundaries remain menu separators.
  */
-export type PageEditorMenuGroups = readonly (
+export type EveryLayoutEditorMenuGroups = readonly (
   readonly (readonly MenuElement[])[]
 )[];
 
-export type PageEditorMenuContext = PageEditorPluginContext & {
+export type EveryLayoutEditorMenuContext = EveryLayoutEditorPluginContext & {
   view: EditorView;
   menu: HTMLElement;
   /** The current default groups; return these unchanged to retain the built-in toolbar. */
-  defaultGroups: PageEditorMenuGroups;
+  defaultGroups: EveryLayoutEditorMenuGroups;
 };
 
-export type PageEditorOptions = {
+export type EveryLayoutEditorOptions = {
   /** Element that receives the editor shell, toolbar, breadcrumbs, and modal UI. */
   mount: HTMLElement;
-  /** Defaults to pageSchema. It is also supplied to the plugin and menu factories. */
+  /** Defaults to everyLayoutSchema. It is also supplied to the plugin and menu factories. */
   schema?: Schema;
   /** A document for `schema`, or its JSON representation. */
   initialDocument?: ProseMirrorNode | unknown;
-  /** A preconfigured state for `schema`; its plugins are extended with configured page plugins. */
+  /** A preconfigured state for `schema`; its plugins are extended with configured Every Layout plugins. */
   initialState?: EditorState;
   /**
    * Receives a fresh default plugin list in shell, modal, reel-overflow,
    * breadcrumb order. Return a new list to add, remove, reorder, or replace it.
    */
-  plugins?: (context: PageEditorPluginContext & {
+  plugins?: (context: EveryLayoutEditorPluginContext & {
     defaultPlugins: readonly Plugin[];
   }) => readonly Plugin[];
   /**
@@ -735,47 +764,107 @@ export type PageEditorOptions = {
    * copy, or replacement groups. The factory runs after selection/document
    * changes so custom controls stay synchronized with editor state.
    */
-  menu?: (context: PageEditorMenuContext) => PageEditorMenuGroups;
+  menu?: (context: EveryLayoutEditorMenuContext) => EveryLayoutEditorMenuGroups;
   /** Called after a document-changing transaction has been applied. */
-  onChange?: (context: PageEditorChangeContext) => void;
+  onChange?: (context: EveryLayoutEditorChangeContext) => void;
 };
 
-export type PageEditor = {
+export type EveryLayoutEditor = {
   view: EditorView;
   destroy: () => void;
 };
 
-export function pageDocumentFromJSON(
+function migrateDocument(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(migrateDocument);
+  }
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  const node = value as {
+    type?: unknown;
+    attrs?: Record<string, unknown>;
+    content?: unknown[];
+  };
+  const isBaseBlock = node.type === 'base_block' || node.type === 'base_box';
+  const isDirectTextBlock = ['paragraph', 'heading', 'blockquote'].includes(
+    node.type as string,
+  );
+  const isCentered = isBaseBlock
+    ? Array.isArray(node.attrs?.layouts) && node.attrs.layouts.includes('center')
+    : node.attrs?.center === true;
+  const { centerMeasure: legacyCenterMeasure, ...currentAttrs } = node.attrs ?? {};
+  const legacyMeasureEnabled = isCentered && node.attrs?.centerIntrinsic === false;
+  const measure = currentAttrs.measure ?? (
+    legacyMeasureEnabled ? legacyCenterMeasure ?? defaultMeasure : null
+  );
+  const gridMin = node.type === 'base_block'
+    ? normalizeGridMinimum(currentAttrs.gridMin)
+    : undefined;
+  const attrs = node.attrs
+    ? {
+      ...currentAttrs,
+      ...(isBaseBlock
+        ? {
+          boxInvert: currentAttrs.boxInvert === true,
+          boxBorder: currentAttrs.boxBorder === true,
+        }
+        : {}),
+      ...(isDirectTextBlock
+        ? {
+          box: currentAttrs.box === true,
+          boxInvert: currentAttrs.boxInvert === true,
+          boxBorder: currentAttrs.boxBorder === true,
+        }
+        : {}),
+      ...(measure === null || measure === undefined ? {} : { measure: normalizeMeasure(measure) }),
+      ...(gridMin === undefined ? {} : { gridMin }),
+      ...(isCentered && measure !== null && measure !== undefined
+        ? { centerIntrinsic: false }
+        : {}),
+    }
+    : undefined;
+
+  return {
+    ...node,
+    ...(node.type === 'base_box' ? { type: 'base_block' } : {}),
+    ...(attrs ? { attrs } : {}),
+    ...(Array.isArray(node.content)
+      ? { content: node.content.map(migrateDocument) }
+      : {}),
+  };
+}
+
+export function everyLayoutDocumentFromJSON(
   value: ProseMirrorNode | unknown | undefined,
-  schema: Schema = pageSchema,
+  schema: Schema = everyLayoutSchema,
 ) {
   if (value instanceof ProseMirrorNode) {
     return value;
   }
   if (value !== undefined) {
-    return schema.nodeFromJSON(
-      schema === pageSchema ? migrateBaseBoxNodes(value) : value,
-    );
+    return schema.nodeFromJSON(migrateDocument(value));
   }
   return schema.node('paragraph');
 }
 
 /**
- * Mounts the complete, host-neutral page editor. Hosts provide persistence and
+ * Mounts the complete, host-neutral Every Layout editor. Hosts provide persistence and
  * initial content through options rather than importing editor implementation details.
  *
  * ```ts
- * mountPageEditor({
+ * mountEveryLayoutEditor({
  *   mount, schema: mySchema,
  *   plugins: ({ defaultPlugins }) => [...defaultPlugins, myPlugin],
  *   menu: ({ defaultGroups, view, schema }) => defaultGroups,
  * });
  * ```
  */
-export function mountPageEditor(options: PageEditorOptions): PageEditor {
+export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): EveryLayoutEditor {
   const {
     mount: shell,
-    schema = pageSchema,
+    schema = everyLayoutSchema,
     initialDocument,
     initialState,
     onChange,
@@ -787,9 +876,9 @@ export function mountPageEditor(options: PageEditorOptions): PageEditor {
   shell.append(menu);
 
   if (initialState && initialState.schema !== schema) {
-    throw new Error('initialState must use the configured page-editor schema.');
+    throw new Error('initialState must use the configured Every Layout editor schema.');
   }
-  const defaultPlugins = pagePlugins(schema, shell);
+  const defaultPlugins = everyLayoutPlugins(schema, shell);
   const configuredPlugins = plugins?.({
     shell,
     schema,
@@ -808,7 +897,7 @@ export function mountPageEditor(options: PageEditorOptions): PageEditor {
     const selection = selectedNode(state);
     return selection?.node.isTextblock ? selection : null;
   };
-  const centerEnabled = (state: EditorState) => selectedCenterTarget(state) !== null;
+  const measureEnabled = (state: EditorState) => selectedMeasureTarget(state) !== null;
   const baseBlockEnabled = (state: EditorState) => selectedBaseBlock(state) !== null;
   const renderMenu = () => {
     menu.replaceChildren();
@@ -828,8 +917,17 @@ export function mountPageEditor(options: PageEditorOptions): PageEditor {
       const selection = selectedNode(currentState);
       return Boolean(selection && isCoverChild(selection));
     };
+    const boxTarget = selectedMeasureTarget(state);
+    const boxAction = menuItemForLayout({
+      label: boxTarget && boxIsActive(boxTarget) ? 'Remove Box' : 'Add Box',
+      enable: (currentState) => selectedMeasureTarget(currentState) !== null,
+      run: () => {
+        const target = selectedMeasureTarget(editor.state);
+        if (target) toggleBox(schema, editor, target);
+      },
+    }, 'box');
     const layoutControls = layoutOptions
-      .filter((layout) => layout !== 'center')
+      .filter((layout) => layout !== 'box' && layout !== 'center')
       .map((layout) => menuItemForLayout({
         label: `${blockLayouts?.includes(layout) ? 'Remove' : 'Add'} ${layoutLabels[layout]}`,
         enable: baseBlockEnabled,
@@ -918,18 +1016,102 @@ export function mountPageEditor(options: PageEditorOptions): PageEditor {
     });
     const componentConfigurationControls = controlsFor(componentConfigurationControlSpecs);
     const genericSpacingModifierControls = controlsFor(genericSpacingControlSpecs);
-    const centerTarget = selectedCenterTarget(state);
-    const centerModifiers = centerTarget && centerIsActive(centerTarget) ? [
-      ...(!centerTarget.baseBlock ? ([1, -1] as const).map((direction) => (
-        menuItemWithGeneratedIcon({
-          label: `${direction < 0 ? 'Decrease' : 'Increase'} Center padding`,
+    const boxModifierControls = boxTarget && boxIsActive(boxTarget)
+      ? ([
+        ['boxInvert', 'Invert Box', 'Remove Box Inversion', 'invertbox'],
+        ['boxBorder', 'Add Box Border', 'Remove Box Border', 'addboxborder'],
+      ] as const).map(([attribute, enableLabel, removeLabel, iconName]) => (
+        menuItemWithRequiredGeneratedIcon({
+          label: boxTarget.node.attrs[attribute] ? removeLabel : enableLabel,
+          title: boxTarget.node.attrs[attribute] ? removeLabel : enableLabel,
           enable: (currentState) => {
-            const target = selectedCenterTarget(currentState);
-            return Boolean(target && !target.baseBlock && centerIsActive(target));
+            const target = selectedMeasureTarget(currentState);
+            return Boolean(target && boxIsActive(target));
           },
           run: () => {
-            const target = selectedCenterTarget(editor.state);
-            if (!target || target.baseBlock || !centerIsActive(target)) return;
+            const target = selectedMeasureTarget(editor.state);
+            if (!target || !boxIsActive(target)) return;
+            dispatchStructuralEdit(
+              editor,
+              editor.state.tr.setNodeMarkup(target.from, undefined, {
+                ...target.node.attrs,
+                [attribute]: !target.node.attrs[attribute],
+              }),
+            );
+          },
+        }, iconName)
+      ))
+      : [];
+    const measureTarget = selectedMeasureTarget(state);
+    const measureModifiers = measureTarget ? [
+      menuItemWithRequiredGeneratedIcon({
+        label: centerIsActive(measureTarget)
+          ? (measureTarget.node.attrs.measure ? 'Restore intrinsic' : 'Add measure')
+          : (measureTarget.node.attrs.measure ? 'Remove measure' : 'Add measure'),
+        enable: (currentState) => {
+          return selectedMeasureTarget(currentState) !== null;
+        },
+        run: () => {
+          const target = selectedMeasureTarget(editor.state);
+          if (!target) return;
+          const centered = centerIsActive(target);
+          const measured = Boolean(target.node.attrs.measure);
+          dispatchStructuralEdit(editor, editor.state.tr.setNodeMarkup(target.from, undefined, {
+            ...target.node.attrs,
+            measure: measured ? null : defaultMeasure,
+            ...(centered ? { centerIntrinsic: measured } : {}),
+          }));
+        },
+      }, 'addmeasure'),
+      ...([1, -1] as const).map((direction) => {
+        const measure = normalizeMeasure(measureTarget.node.attrs.measure);
+        const nextMeasure = stepMeasure(measure, direction);
+        return menuItemWithRequiredGeneratedIcon({
+          label: `${direction > 0 ? 'Increase' : 'Decrease'} measure to ${nextMeasure}`,
+          enable: (currentState) => {
+            const target = selectedMeasureTarget(currentState);
+            if (!target || !target.node.attrs.measure) {
+              return false;
+            }
+            return stepMeasure(
+              normalizeMeasure(target.node.attrs.measure),
+              direction,
+            ) !== normalizeMeasure(target.node.attrs.measure);
+          },
+          run: () => {
+            const target = selectedMeasureTarget(editor.state);
+            if (!target || !target.node.attrs.measure) return;
+            const currentMeasure = normalizeMeasure(target.node.attrs.measure);
+            const updatedMeasure = stepMeasure(currentMeasure, direction);
+            if (updatedMeasure === currentMeasure) return;
+            dispatchStructuralEdit(editor, editor.state.tr.setNodeMarkup(target.from, undefined, {
+              ...target.node.attrs,
+              measure: updatedMeasure,
+            }));
+          },
+        }, direction > 0 ? 'increasemeasure' : 'decreasemeasure');
+      }),
+      ...((centerIsActive(measureTarget) || boxIsActive(measureTarget)) && !measureTarget.baseBlock
+        ? ([1, -1] as const).map((direction) => (
+        menuItemWithGeneratedIcon({
+          label: `${direction < 0 ? 'Decrease' : 'Increase'} ${
+            boxIsActive(measureTarget) ? 'Box' : 'Center'
+          } padding`,
+          enable: (currentState) => {
+            const target = selectedMeasureTarget(currentState);
+            return Boolean(
+              target
+              && !target.baseBlock
+              && (centerIsActive(target) || boxIsActive(target)),
+            );
+          },
+          run: () => {
+            const target = selectedMeasureTarget(editor.state);
+            if (
+              !target
+              || target.baseBlock
+              || (!centerIsActive(target) && !boxIsActive(target))
+            ) return;
             dispatchStructuralEdit(editor, editor.state.tr.setNodeMarkup(target.from, undefined, {
               ...target.node.attrs,
               padding: stepValue(
@@ -941,31 +1123,14 @@ export function mountPageEditor(options: PageEditorOptions): PageEditor {
           },
         }, modifierIconName('padding', direction)!)
       )) : []),
-      new MenuItem({
-        label: centerTarget.node.attrs.centerIntrinsic
-          ? 'Use measure'
-          : 'Use intrinsic',
+      ...(centerIsActive(measureTarget) ? [menuItemWithGeneratedIcon({
+        label: measureTarget.node.attrs.centerText ? 'Uncenter text' : 'Center text',
         enable: (currentState) => {
-          const target = selectedCenterTarget(currentState);
+          const target = selectedMeasureTarget(currentState);
           return Boolean(target && centerIsActive(target));
         },
         run: () => {
-          const target = selectedCenterTarget(editor.state);
-          if (!target || !centerIsActive(target)) return;
-          dispatchStructuralEdit(editor, editor.state.tr.setNodeMarkup(target.from, undefined, {
-            ...target.node.attrs,
-            centerIntrinsic: !target.node.attrs.centerIntrinsic,
-          }));
-        },
-      }),
-      menuItemWithGeneratedIcon({
-        label: centerTarget.node.attrs.centerText ? 'Uncenter text' : 'Center text',
-        enable: (currentState) => {
-          const target = selectedCenterTarget(currentState);
-          return Boolean(target && centerIsActive(target));
-        },
-        run: () => {
-          const target = selectedCenterTarget(editor.state);
+          const target = selectedMeasureTarget(editor.state);
           if (!target || !centerIsActive(target)) return;
           dispatchStructuralEdit(editor, editor.state.tr.setNodeMarkup(target.from, undefined, {
             ...target.node.attrs,
@@ -973,12 +1138,13 @@ export function mountPageEditor(options: PageEditorOptions): PageEditor {
           }));
         },
       }, 'center'),
+      ] : []),
     ] : [];
     const centerAction = menuItemWithGeneratedIcon({
-        label: centerTarget && centerIsActive(centerTarget) ? 'Remove Center' : 'Add Center',
-        enable: centerEnabled,
+        label: measureTarget && centerIsActive(measureTarget) ? 'Remove Center' : 'Add Center',
+        enable: measureEnabled,
         run: () => {
-          const target = selectedCenterTarget(editor.state);
+          const target = selectedMeasureTarget(editor.state);
           if (!target) return;
           if (target.baseBlock) {
             const block = selectedBaseBlock(editor.state);
@@ -988,6 +1154,9 @@ export function mountPageEditor(options: PageEditorOptions): PageEditor {
           dispatchStructuralEdit(editor, editor.state.tr.setNodeMarkup(target.from, undefined, {
             ...target.node.attrs,
             center: !target.node.attrs.center,
+            ...(!target.node.attrs.center && target.node.attrs.measure
+              ? { centerIntrinsic: false }
+              : {}),
           }));
         },
       }, 'center');
@@ -1117,7 +1286,7 @@ export function mountPageEditor(options: PageEditorOptions): PageEditor {
       }, 'setcovermain')
       : null;
     const blockToolbarGroups: MenuElement[][] = [
-      layoutControls,
+      [boxAction, ...layoutControls],
       [centerAction],
       [blockTagControl],
     ];
@@ -1125,7 +1294,8 @@ export function mountPageEditor(options: PageEditorOptions): PageEditor {
       ...(sidebarOrientationControl ? [[sidebarOrientationControl]] : []),
       ...(frameRatioControl ? [[frameRatioControl]] : []),
       ...(coverMainAction ? [[coverMainAction]] : []),
-      ...(centerModifiers.length > 0 ? [centerModifiers] : []),
+      ...(measureModifiers.length > 0 ? [measureModifiers] : []),
+      ...(boxModifierControls.length > 0 ? [boxModifierControls] : []),
       ...(componentConfigurationControls.length > 0 ? [componentConfigurationControls] : []),
       ...(sidebarWidthControls.length > 0 ? [sidebarWidthControls] : []),
       ...(genericSpacingModifierControls.length > 0 ? [genericSpacingModifierControls] : []),
@@ -1217,7 +1387,7 @@ export function mountPageEditor(options: PageEditorOptions): PageEditor {
         ...configuredPlugins,
       ],
     }) ?? EditorState.create({
-      doc: pageDocumentFromJSON(initialDocument, schema),
+      doc: everyLayoutDocumentFromJSON(initialDocument, schema),
       plugins: configuredPlugins,
     }),
     dispatchTransaction(transaction) {

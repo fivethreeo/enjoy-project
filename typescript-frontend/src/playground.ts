@@ -1,21 +1,21 @@
-import { mountPageEditor, pageDocumentFromJSON } from './prosemirror-editor/page-editor';
+import { mountEveryLayoutEditor, everyLayoutDocumentFromJSON } from './prosemirror-editor/everylayout-editor';
 
-const mount = document.querySelector<HTMLElement>('#page-editor');
+const mount = document.querySelector<HTMLElement>('#everylayout-editor');
 
 if (!mount) {
-  throw new Error('The playground page needs a #page-editor mount element.');
+  throw new Error('The playground page needs a #everylayout-editor mount element.');
 }
 
-mountPageEditor({
+mountEveryLayoutEditor({
   mount,
-  initialDocument: pageDocumentFromJSON({
+  initialDocument: everyLayoutDocumentFromJSON({
     type: 'doc',
     content: [
       {
         type: 'base_block',
         attrs: { tag: 'main', layouts: ['stack', 'center'], space: 3, padding: 2 },
         content: [
-          { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: 'Page editor playground' }] },
+          { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: 'Every Layout editor playground' }] },
           { type: 'paragraph', content: [{ type: 'text', text: 'This standalone editor has the same schema, toolbar, breadcrumbs, modal infrastructure, and Every Layout styles as the Django admin editor.' }] },
           {
             type: 'base_block',
