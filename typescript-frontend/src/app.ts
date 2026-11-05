@@ -1,4 +1,5 @@
 import { initEveryLayout } from './everylayout/init';
+import './customstyling.scss';
 import './index.scss';
 
 const rootEl = document.querySelector<HTMLElement>('#root');

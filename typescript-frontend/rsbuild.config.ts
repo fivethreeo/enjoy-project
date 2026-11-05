@@ -1,6 +1,6 @@
 import { defineConfig } from '@rsbuild/core';
 import { pluginSass } from '@rsbuild/plugin-sass';
-import prefixSelector from 'postcss-prefix-selector';
+import { generateCustomStylingClasses } from './scripts/generate-custom-styling-classes.mjs';
 
 const assetPrefix = process.env.RSBUILD_BASE_URL;
 const corsOrigin = process.env.RSBUILD_CORS_ORIGIN;
@@ -9,6 +9,21 @@ const hmrHost = process.env.RSBUILD_HMR_HOST;
 function environmentAssetPrefix(path: string) {
   return assetPrefix ? `${assetPrefix}${path}` : path;
 }
+
+const customStylingClassListPlugin = {
+  apply(compiler: {
+    hooks: {
+      beforeCompile: {
+        tap: (name: string, callback: () => void) => void;
+      };
+    };
+  }) {
+    compiler.hooks.beforeCompile.tap(
+      'generate-custom-styling-classes',
+      generateCustomStylingClasses,
+    );
+  },
+};
 
 // Docs: https://rsbuild.rs/config/
 export default defineConfig(({ env }) => {
@@ -23,7 +38,7 @@ export default defineConfig(({ env }) => {
       ...(hmrHost ? { host: hmrHost } : {}),
       port: '<port>',
     },
-    // Django reads manifests and the parallel launcher watches emitted JavaScript in development.
+    // Django reads the development manifests from disk.
     writeToDisk: true,
   },
   server: {
@@ -46,13 +61,18 @@ export default defineConfig(({ env }) => {
           index: './src/app.ts',
         },
       },
+      tools: {
+        rspack: {
+          output: {
+            uniqueName: 'prosango_app',
+          },
+        },
+      },
     },
     editor: {
       dev: {
         // Each environment owns its runtime and HMR update namespace.
         assetPrefix: environmentAssetPrefix('/editor'),
-        hmr: false,
-        liveReload: false,
       },
       source: {
         entry: {
@@ -66,22 +86,10 @@ export default defineConfig(({ env }) => {
         manifest: 'editor-manifest.json',
       },
       tools: {
-        postcss: (_, { addPlugins }) => {
-          addPlugins(
-            prefixSelector({
-              prefix: '.prosemirror-editor-shell',
-              transform(prefix, selector) {
-                if (selector === ':root') {
-                  return prefix;
-                }
-                if (/^(?:\*|::?|[a-z])/i.test(selector)) {
-                  return `${prefix} ${selector}`;
-                }
-                return selector;
-              },
-            }),
-            { order: 'pre' },
-          );
+        rspack: {
+          output: {
+            uniqueName: 'prosango_editor',
+          },
         },
       },
     },
@@ -105,28 +113,17 @@ export default defineConfig(({ env }) => {
         manifest: 'playground-manifest.json',
       },
       tools: {
-        postcss: (_, { addPlugins }) => {
-          addPlugins(
-            prefixSelector({
-              prefix: '#everylayout-editor',
-              transform(prefix, selector) {
-                if (selector === ':root') {
-                  return prefix;
-                }
-                if (/^(?:\*|::?|[a-z])/i.test(selector)) {
-                  return `${prefix} ${selector}`;
-                }
-                return selector;
-              },
-            }),
-            { order: 'pre' },
-          );
+        rspack: {
+          output: {
+            uniqueName: 'prosango_playground',
+          },
         },
       },
     },
   },
   tools: {
     rspack: {
+      plugins: [customStylingClassListPlugin],
       output: isDevelopment
         ? {
             chunkFilename: 'static/js/[name].js',

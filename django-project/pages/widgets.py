@@ -45,6 +45,14 @@ class PageContentWidget(Textarea):
         }
         super().__init__(attrs)
 
+    def with_media_endpoints(self, endpoints):
+        """Return this widget configured by the admin, without hard-coded URLs."""
+        self.attrs.update({
+            f'data-filer-{name}-url': url
+            for name, url in endpoints.items()
+        })
+        return self
+
     @property
     def media(self):
         return super().media + _editor_media()

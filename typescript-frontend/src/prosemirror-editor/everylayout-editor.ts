@@ -11,60 +11,111 @@ import {
   renderGrouped,
   type MenuElement,
 } from 'prosemirror-menu';
+import './editor.css';
 import 'prosemirror-view/style/prosemirror.css';
 import 'prosemirror-menu/style/menu.css';
 import 'prosemirror-example-setup/style/style.css';
 import '../../prosemirror-breadcrumbs/style/breadcrumbs.css';
 import '../everylayout.scss';
-import './editor.css';
 import {
   buildExampleToolbarGroupsWithIcons,
   menuItemWithGeneratedIcon,
   menuItemWithRequiredGeneratedIcon,
   type IconName,
 } from './example-menu-icons';
+import { customStylingClasses } from './custom-styling';
+import { uniqueNodeId } from './node-id';
 import {
   baseBlockTags,
+  defaultClusterAlign,
+  defaultClusterJustify,
   defaultMeasure,
   frameRatios,
   gridMinimums,
   measures,
   normalizeFrameRatio,
+  normalizeClusterAlign,
+  normalizeClusterJustify,
   normalizeGridMinimum,
   everyLayoutPlugins,
   everyLayoutSchema,
+  insertBaseBlockAfterNodeSelection,
   type BaseBlockTag,
+  type ClusterAlign,
+  type ClusterJustify,
   type FrameRatio,
+  type LayoutOption,
   type Measure,
 } from './setup';
+import {
+  componentToolbarLayoutOptions,
+  layoutControlEnabled,
+  normalizeLayoutOptions,
+  selectedLayoutTarget,
+  type LayoutTarget,
+} from './layout-targets';
+import { wrapInBaseBlock, wrapInBaseBlockTitle } from './wrap-in-block';
 
 export { everyLayoutSchema } from './setup';
+export { wrapInBaseBlock } from './wrap-in-block';
+export {
+  blockMoveTarget,
+  moveBlock,
+  moveBlockDown,
+  moveBlockUp,
+  type BlockMoveDirection,
+  type BlockMoveTarget,
+} from './move-block';
 
-const layoutOptions = [
-  'box',
-  'center',
-  'cluster',
-  'cover',
-  'frame',
-  'grid',
-  'reel',
-  'sidebar',
-  'stack',
-  'switcher',
-] as const;
-type LayoutOption = typeof layoutOptions[number];
+const layoutOptions: readonly LayoutOption[] = [
+  'box', 'center', 'cluster', 'cover', 'frame', 'grid', 'reel', 'sidebar', 'stack', 'switcher',
+];
 const zeroSpace = 'zero';
 const spaceValues = [zeroSpace, -4, -3, -2, -1, 0, 1, 2, 3] as const;
 const sidebarBreakpoints = [50, 66, 75];
 const sidebarWidths = ['auto', 12, 16, 20, 24, 28, 32] as const;
+
+type CustomStylingTarget = {
+  node: ProseMirrorNode;
+  from: number;
+};
+
+function normalizedCustomClasses(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((className): className is string => (
+      typeof className === 'string' && customStylingClasses.includes(className)
+    ))
+    : [];
+}
+
+function customStylingTarget(state: EditorState): CustomStylingTarget | null {
+  if (state.selection instanceof NodeSelection) {
+    return 'customClasses' in state.selection.node.attrs
+      ? { node: state.selection.node, from: state.selection.from }
+      : null;
+  }
+
+  for (let depth = state.selection.$from.depth; depth > 0; depth -= 1) {
+    const node = state.selection.$from.node(depth);
+    if ('customClasses' in node.attrs) {
+      return { node, from: state.selection.$from.before(depth) };
+    }
+  }
+  return null;
+}
 const switcherMaximums = [2, 3, 4, 5, 6, 7];
 const switcherThresholds = [20, 25, 30, 35, 40];
+const measureWidths: Record<Measure, number> = {
+  lg: 60,
+  md: 45,
+  sm: 30,
+};
 type ControlValue = number | typeof zeroSpace;
 type SidebarWidth = typeof sidebarWidths[number];
 type MeasureTarget = {
   node: ProseMirrorNode;
   from: number;
-  baseBlock: boolean;
+  layoutContainer: boolean;
 };
 
 function normalizeMeasure(value: unknown): Measure {
@@ -83,7 +134,7 @@ function stepMeasure(measure: Measure, direction: -1 | 1) {
 function modifierIconName(
   attribute: string,
   direction: -1 | 1,
-): IconName | undefined {
+): string | undefined {
   if (attribute === 'space') {
     return direction < 0 ? 'decreasespace' : 'increasespace';
   }
@@ -139,6 +190,22 @@ const modifierLayouts = {
   padding: ['box', 'center'],
   gap: ['cluster', 'grid', 'reel', 'sidebar', 'switcher'],
 } as const satisfies Partial<Record<string, readonly LayoutOption[]>>;
+
+const clusterJustifyControls = [
+  ['start', 'Justify Cluster to start', 'justifycontentflexsstart'],
+  ['end', 'Justify Cluster to end', 'justifycontentflexend'],
+  ['between', 'Justify Cluster between items', 'justifycontentspacebetween'],
+  ['around', 'Justify Cluster around items', 'justifycontentspacearound'],
+  ['center', 'Center Cluster justification', 'justifycontentcenter'],
+] as const satisfies ReadonlyArray<readonly [ClusterJustify, string, IconName]>;
+
+const clusterAlignControls = [
+  ['start', 'Align Cluster items to start', 'alignitemsflexstart'],
+  ['center', 'Center Cluster items', 'alignitemscenter'],
+  ['end', 'Align Cluster items to end', 'alignitemsflexend'],
+  ['stretch', 'Stretch Cluster items', 'alignitemsstretch'],
+  ['baseline', 'Align Cluster item baselines', 'alignitemsbaseline'],
+] as const satisfies ReadonlyArray<readonly [ClusterAlign, string, IconName]>;
 
 const controlLabels = {
   gridMin: 'Grid minimum',
@@ -317,10 +384,10 @@ function isEmptyBlock(node: NodeSelection['node']) {
 function updateBlockLayout(
   schema: Schema,
   editor: EditorView,
-  selectedBlock: NodeSelection,
+  target: LayoutTarget,
   layout: LayoutOption,
 ) {
-  const layouts = selectedBlock.node.attrs.layouts as LayoutOption[];
+  const layouts = target.node.attrs.layouts as LayoutOption[];
   const addingLayout = !layouts.includes(layout);
   const nextLayouts = addingLayout
     ? [
@@ -329,27 +396,27 @@ function updateBlockLayout(
     ]
     : layouts.filter((current) => current !== layout);
   const attrs = {
-    ...selectedBlock.node.attrs,
+    ...target.node.attrs,
     layouts: nextLayouts,
-    ...(addingLayout && layout === 'center' && selectedBlock.node.attrs.measure
+    ...(addingLayout && layout === 'center' && target.node.attrs.measure
       ? { centerIntrinsic: false }
       : {}),
   };
 
-  if (addingLayout && isEmptyBlock(selectedBlock.node)) {
+  if (target.node.type.name === 'base_block' && addingLayout && isEmptyBlock(target.node)) {
     const transaction = editor.state.tr.replaceWith(
-      selectedBlock.from,
-      selectedBlock.to,
+      target.from,
+      target.from + target.node.nodeSize,
       schema.node('base_block', attrs, layoutExample(schema, layout)),
     );
-    transaction.setSelection(NodeSelection.create(transaction.doc, selectedBlock.from));
+    transaction.setSelection(NodeSelection.create(transaction.doc, target.from));
     dispatchStructuralEdit(editor, transaction);
     return;
   }
 
   dispatchStructuralEdit(
     editor,
-    editor.state.tr.setNodeMarkup(selectedBlock.from, undefined, attrs),
+    editor.state.tr.setNodeMarkup(target.from, undefined, attrs),
   );
 }
 
@@ -385,6 +452,14 @@ function selectedBaseBlock(state: EditorState) {
     : null;
 }
 
+function frameRatioCycleLabel(state: EditorState) {
+  const currentRatio = normalizeFrameRatio(selectedLayoutTarget(state)?.node.attrs.frameRatio);
+  const nextRatio = frameRatios[
+    (frameRatios.indexOf(currentRatio) + 1) % frameRatios.length
+  ] as FrameRatio;
+  return `Cycle to next ratio ${nextRatio.replace('-', ':')}`;
+}
+
 function selectedDirectMeasureNode(state: EditorState): MeasureTarget | null {
   const { selection } = state;
   if (
@@ -394,7 +469,7 @@ function selectedDirectMeasureNode(state: EditorState): MeasureTarget | null {
     return {
       node: selection.node,
       from: selection.from,
-      baseBlock: false,
+      layoutContainer: false,
     };
   }
 
@@ -405,7 +480,7 @@ function selectedDirectMeasureNode(state: EditorState): MeasureTarget | null {
     }
     const from = selection.$from.before(depth);
     if (selection.to < from + node.nodeSize) {
-      return { node, from, baseBlock: false };
+      return { node, from, layoutContainer: false };
     }
   }
 
@@ -413,46 +488,47 @@ function selectedDirectMeasureNode(state: EditorState): MeasureTarget | null {
 }
 
 function selectedMeasureTarget(state: EditorState): MeasureTarget | null {
-  const block = selectedBaseBlock(state);
-  if (block) {
-    return {
-      node: block.node,
-      from: block.from,
-      baseBlock: true,
-    };
-  }
-  return selectedDirectMeasureNode(state);
+  // A text selection within a directly configurable text block must update
+  // that block rather than its enclosing Base Block. Node selections of Base
+  // Blocks and Figures still fall through to the generic layout target.
+  const directTarget = selectedDirectMeasureNode(state);
+  if (directTarget) return directTarget;
+  return selectedLayoutTarget(state);
 }
 
 function centerIsActive(target: MeasureTarget) {
-  return target.baseBlock
+  return target.layoutContainer
     ? (target.node.attrs.layouts as LayoutOption[]).includes('center')
     : target.node.attrs.center;
 }
 
 function boxIsActive(target: MeasureTarget) {
-  return target.baseBlock
+  return target.layoutContainer
     ? (target.node.attrs.layouts as LayoutOption[]).includes('box')
     : target.node.attrs.box;
 }
 
 function toggleBox(schema: Schema, editor: EditorView, target: MeasureTarget) {
-  if (target.baseBlock) {
-    const block = selectedBaseBlock(editor.state);
-    if (block) updateBlockLayout(schema, editor, block, 'box');
+  if (target.layoutContainer) {
+    const layoutTarget = selectedLayoutTarget(editor.state);
+    if (layoutTarget) updateBlockLayout(schema, editor, layoutTarget, 'box');
     return;
   }
   dispatchStructuralEdit(editor, editor.state.tr.setNodeMarkup(target.from, undefined, {
     ...target.node.attrs,
     box: !target.node.attrs.box,
-  }));
+  }), target);
 }
 
-function dispatchStructuralEdit(editor: EditorView, transaction: EditorState['tr']) {
-  const selectedBlock = selectedBaseBlock(editor.state);
-  if (selectedBlock) {
-    const mappedPosition = transaction.mapping.map(selectedBlock.from);
-    if (transaction.doc.nodeAt(mappedPosition)?.type.name === 'base_block') {
+function dispatchStructuralEdit(
+  editor: EditorView,
+  transaction: EditorState['tr'],
+  selectionTarget?: Pick<MeasureTarget, 'node' | 'from'>,
+) {
+  const target = selectionTarget ?? selectedLayoutTarget(editor.state);
+  if (target) {
+    const mappedPosition = transaction.mapping.map(target.from);
+    if (transaction.doc.nodeAt(mappedPosition)?.type.name === target.node.type.name) {
       transaction.setSelection(NodeSelection.create(transaction.doc, mappedPosition));
     }
   }
@@ -499,15 +575,6 @@ function descriptionParent(selection: NodeSelection) {
   return fallback;
 }
 
-function slugify(text: string) {
-  return text
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'description';
-}
-
 function descriptionId(editor: EditorView, selection: NodeSelection) {
   const usedIds = new Set<string>();
   editor.state.doc.descendants((node, position) => {
@@ -516,12 +583,7 @@ function descriptionId(editor: EditorView, selection: NodeSelection) {
     }
   });
 
-  const baseId = slugify(selection.node.textContent);
-  let id = baseId;
-  for (let suffix = 2; usedIds.has(id); suffix += 1) {
-    id = `${baseId}-${suffix}`;
-  }
-  return id;
+  return uniqueNodeId(selection.node, usedIds, 'aria-');
 }
 
 function setAriaDescription(editor: EditorView, selection: NodeSelection) {
@@ -590,6 +652,30 @@ function stepValue<Value>(
 
 function formatScaleValue(value: ControlValue) {
   return value === zeroSpace ? 'zero' : `s${value}`;
+}
+
+function formatMeasureValue(value: unknown) {
+  return `${measureWidths[normalizeMeasure(value)]}ch`;
+}
+
+function formatModifierTarget(attribute: string, value: ControlValue) {
+  if (attribute === 'gridMin') {
+    return `${normalizeGridMinimum(value)}rem`;
+  }
+  if (attribute === 'space' || attribute === 'padding' || attribute === 'gap') {
+    return formatScaleValue(value);
+  }
+  return String(value);
+}
+
+function normalizeSidebarWidth(value: unknown): SidebarWidth {
+  return sidebarWidths.includes(value as SidebarWidth)
+    ? value as SidebarWidth
+    : 'auto';
+}
+
+function formatSidebarWidth(value: SidebarWidth) {
+  return value === 'auto' ? value : `${value}rem`;
 }
 
 function inspectableNode(node: NodeSelection['node']) {
@@ -686,6 +772,18 @@ function nodeInspection(node: NodeSelection['node']) {
     || layouts.includes('switcher')
   ) {
     details.push(`${modifierLabel('gap', layouts)}: ${formatScaleValue(node.attrs.gap)}`);
+  }
+  if (layouts.includes('cluster')) {
+    const clusterJustify = normalizeClusterJustify(node.attrs.clusterJustify);
+    if (clusterJustify !== defaultClusterJustify) {
+      details.push(`Cluster justification: ${clusterJustify}`);
+    }
+    const clusterAlign = normalizeClusterAlign(
+      node.attrs.clusterAlignCenter ? 'center' : node.attrs.clusterAlign,
+    );
+    if (clusterAlign !== defaultClusterAlign) {
+      details.push(`Cluster alignment: ${clusterAlign}`);
+    }
   }
   if (layouts.includes('grid')) {
     details.push(`Grid minimum: ${normalizeGridMinimum(node.attrs.gridMin)}rem`);
@@ -788,10 +886,12 @@ function migrateDocument(value: unknown): unknown {
     content?: unknown[];
   };
   const isBaseBlock = node.type === 'base_block' || node.type === 'base_box';
+  const isFigure = node.type === 'figure';
+  const isLayoutContainer = isBaseBlock || isFigure;
   const isDirectTextBlock = ['paragraph', 'heading', 'blockquote'].includes(
     node.type as string,
   );
-  const isCentered = isBaseBlock
+  const isCentered = isLayoutContainer
     ? Array.isArray(node.attrs?.layouts) && node.attrs.layouts.includes('center')
     : node.attrs?.center === true;
   const { centerMeasure: legacyCenterMeasure, ...currentAttrs } = node.attrs ?? {};
@@ -799,16 +899,26 @@ function migrateDocument(value: unknown): unknown {
   const measure = currentAttrs.measure ?? (
     legacyMeasureEnabled ? legacyCenterMeasure ?? defaultMeasure : null
   );
-  const gridMin = node.type === 'base_block'
+  const gridMin = isLayoutContainer
     ? normalizeGridMinimum(currentAttrs.gridMin)
     : undefined;
   const attrs = node.attrs
     ? {
       ...currentAttrs,
-      ...(isBaseBlock
+      ...(isLayoutContainer
         ? {
           boxInvert: currentAttrs.boxInvert === true,
           boxBorder: currentAttrs.boxBorder === true,
+          ...(Array.isArray(currentAttrs.layouts)
+            ? {
+              layouts: normalizeLayoutOptions(node.type, currentAttrs.layouts),
+            }
+            : {}),
+          clusterJustify: normalizeClusterJustify(currentAttrs.clusterJustify),
+          clusterAlign: normalizeClusterAlign(
+            currentAttrs.clusterAlignCenter ? 'center' : currentAttrs.clusterAlign,
+          ),
+          clusterAlignCenter: currentAttrs.clusterAlignCenter === true,
         }
         : {}),
       ...(isDirectTextBlock
@@ -893,22 +1003,21 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
   const selectedNode = (state: EditorState) => (
     state.selection instanceof NodeSelection ? state.selection : null
   );
-  const selectedTextualNode = (state: EditorState) => {
-    const selection = selectedNode(state);
-    return selection?.node.isTextblock ? selection : null;
-  };
   const measureEnabled = (state: EditorState) => selectedMeasureTarget(state) !== null;
   const baseBlockEnabled = (state: EditorState) => selectedBaseBlock(state) !== null;
   const renderMenu = () => {
     menu.replaceChildren();
     const state = editor.state;
     const block = selectedBaseBlock(state);
+    const layoutTarget = selectedLayoutTarget(state);
     const nodeSelection = selectedNode(state);
     const inspectedNode = nodeSelection && inspectableNode(nodeSelection.node)
       ? nodeSelection
       : null;
-    const blockLayouts = block?.node.attrs.layouts as LayoutOption[] | undefined;
-    const hasLayout = (layout: LayoutOption) => Boolean(blockLayouts?.includes(layout));
+    const blockLayouts = layoutTarget?.node.attrs.layouts as LayoutOption[] | undefined;
+    const hasLayout = (layout: LayoutOption) => Boolean(
+      layoutTarget?.allowedLayouts.includes(layout) && blockLayouts?.includes(layout),
+    );
     const descriptionEnabled = (currentState: EditorState) => {
       const selection = selectedNode(currentState);
       return Boolean(selection && canHaveId(selection.node) && descriptionParent(selection));
@@ -926,14 +1035,19 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
         if (target) toggleBox(schema, editor, target);
       },
     }, 'box');
-    const layoutControls = layoutOptions
-      .filter((layout) => layout !== 'box' && layout !== 'center')
+    const layoutControls = componentToolbarLayoutOptions
+      .filter((layout) => (
+        layout !== 'box'
+        && layout !== 'center'
+      ))
       .map((layout) => menuItemForLayout({
         label: `${blockLayouts?.includes(layout) ? 'Remove' : 'Add'} ${layoutLabels[layout]}`,
-        enable: baseBlockEnabled,
+        enable: (currentState) => layoutControlEnabled(currentState, layout),
         run: () => {
-          const selectedBlock = selectedBaseBlock(editor.state);
-          if (selectedBlock) updateBlockLayout(schema, editor, selectedBlock, layout);
+          const target = selectedLayoutTarget(editor.state);
+          if (target?.allowedLayouts.includes(layout)) {
+            updateBlockLayout(schema, editor, target, layout);
+          }
         },
       }, layout));
     const blockTagControl = new Dropdown(
@@ -980,9 +1094,9 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
         return [];
       }
       const enabled = (currentState: EditorState) => {
-        const selectedBlock = selectedBaseBlock(currentState);
-        if (!selectedBlock) return false;
-        const layouts = selectedBlock.node.attrs.layouts as LayoutOption[];
+        const target = selectedLayoutTarget(currentState);
+        if (!target) return false;
+        const layouts = target.node.attrs.layouts as LayoutOption[];
         if (attribute === 'gridMin') return layouts.includes('grid');
         if (attribute === 'sidebarBreakpoint') return hasSidebarLayout(layouts);
         if (attribute === 'space') return layouts.some((layout) => layout === 'stack' || layout === 'cover');
@@ -991,21 +1105,28 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
         return layouts.some((layout) => ['cluster', 'grid', 'reel', 'sidebar', 'switcher'].includes(layout));
       };
       const changeValue = (direction: -1 | 1) => () => {
-        const selectedBlock = selectedBaseBlock(editor.state);
-        if (!selectedBlock || !enabled(editor.state)) return;
-        const current = selectedBlock.node.attrs[attribute] as ControlValue;
+        const target = selectedLayoutTarget(editor.state);
+        if (!target || !enabled(editor.state)) return;
+        const current = target.node.attrs[attribute] as ControlValue;
         dispatchStructuralEdit(
           editor,
-          editor.state.tr.setNodeMarkup(selectedBlock.from, undefined, {
-            ...selectedBlock.node.attrs,
+          editor.state.tr.setNodeMarkup(target.from, undefined, {
+            ...target.node.attrs,
             [attribute]: stepValue(current, values, direction),
           }),
         );
       };
       return ([1, -1] as const).map((direction) => {
         const iconName = modifierIconName(attribute, direction);
+        const nextValue = stepValue(
+          layoutTarget!.node.attrs[attribute] as ControlValue,
+          values,
+          direction,
+        );
         const spec = {
-          label: `${direction < 0 ? 'Decrease' : 'Increase'} ${contextualLabel}`,
+          label: `${direction < 0 ? 'Decrease' : 'Increase'} ${contextualLabel} to ${
+            formatModifierTarget(attribute, nextValue)
+          }`,
           enable: enabled,
           run: changeValue(direction),
         };
@@ -1016,6 +1137,88 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
     });
     const componentConfigurationControls = controlsFor(componentConfigurationControlSpecs);
     const genericSpacingModifierControls = controlsFor(genericSpacingControlSpecs);
+    const clusterModifierControls = hasLayout('cluster')
+      ? [
+        ...clusterJustifyControls.map(([justify, actionLabel, iconName]) => {
+          const currentJustify = normalizeClusterJustify(
+            layoutTarget!.node.attrs.clusterJustify,
+          );
+          const label = currentJustify === justify && justify !== defaultClusterJustify
+            ? 'Reset Cluster justification'
+            : actionLabel;
+          return (
+          menuItemWithRequiredGeneratedIcon({
+            label,
+            title: label,
+            enable: (currentState) => {
+              const target = selectedLayoutTarget(currentState);
+              return Boolean(
+                target
+                && (target.node.attrs.layouts as LayoutOption[]).includes('cluster'),
+              );
+            },
+            run: () => {
+              const target = selectedLayoutTarget(editor.state);
+              if (!target || !(target.node.attrs.layouts as LayoutOption[]).includes('cluster')) {
+                return;
+              }
+              dispatchStructuralEdit(
+                editor,
+                editor.state.tr.setNodeMarkup(target.from, undefined, {
+                  ...target.node.attrs,
+                  clusterJustify: normalizeClusterJustify(target.node.attrs.clusterJustify) === justify
+                    ? defaultClusterJustify
+                    : justify,
+                }),
+              );
+            },
+          }, iconName, label)
+          );
+        }),
+        ...clusterAlignControls.map(([align, actionLabel, iconName]) => {
+          const currentAlign = normalizeClusterAlign(
+            layoutTarget!.node.attrs.clusterAlignCenter
+              ? 'center'
+              : layoutTarget!.node.attrs.clusterAlign,
+          );
+          const label = currentAlign === align && align !== defaultClusterAlign
+            ? 'Reset Cluster alignment'
+            : actionLabel;
+          return menuItemWithRequiredGeneratedIcon({
+            label,
+            title: label,
+            enable: (currentState) => {
+              const target = selectedLayoutTarget(currentState);
+              return Boolean(
+                target
+                && (target.node.attrs.layouts as LayoutOption[]).includes('cluster'),
+              );
+            },
+            run: () => {
+              const target = selectedLayoutTarget(editor.state);
+              if (!target || !(target.node.attrs.layouts as LayoutOption[]).includes('cluster')) {
+                return;
+              }
+              const nextAlign = normalizeClusterAlign(
+                target.node.attrs.clusterAlignCenter
+                  ? 'center'
+                  : target.node.attrs.clusterAlign,
+              ) === align
+                ? defaultClusterAlign
+                : align;
+              dispatchStructuralEdit(
+                editor,
+                editor.state.tr.setNodeMarkup(target.from, undefined, {
+                  ...target.node.attrs,
+                  clusterAlign: nextAlign,
+                  clusterAlignCenter: nextAlign === 'center',
+                }),
+              );
+            },
+          }, iconName, label);
+        }),
+      ]
+      : [];
     const boxModifierControls = boxTarget && boxIsActive(boxTarget)
       ? ([
         ['boxInvert', 'Invert Box', 'Remove Box Inversion', 'invertbox'],
@@ -1037,6 +1240,7 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
                 ...target.node.attrs,
                 [attribute]: !target.node.attrs[attribute],
               }),
+              target,
             );
           },
         }, iconName)
@@ -1060,14 +1264,16 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
             ...target.node.attrs,
             measure: measured ? null : defaultMeasure,
             ...(centered ? { centerIntrinsic: measured } : {}),
-          }));
+          }), target);
         },
       }, 'addmeasure'),
       ...([1, -1] as const).map((direction) => {
         const measure = normalizeMeasure(measureTarget.node.attrs.measure);
         const nextMeasure = stepMeasure(measure, direction);
         return menuItemWithRequiredGeneratedIcon({
-          label: `${direction > 0 ? 'Increase' : 'Decrease'} measure to ${nextMeasure}`,
+          label: `${direction > 0 ? 'Increase' : 'Decrease'} measure to ${
+            formatMeasureValue(nextMeasure)
+          }`,
           enable: (currentState) => {
             const target = selectedMeasureTarget(currentState);
             if (!target || !target.node.attrs.measure) {
@@ -1087,21 +1293,27 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
             dispatchStructuralEdit(editor, editor.state.tr.setNodeMarkup(target.from, undefined, {
               ...target.node.attrs,
               measure: updatedMeasure,
-            }));
+            }), target);
           },
         }, direction > 0 ? 'increasemeasure' : 'decreasemeasure');
       }),
-      ...((centerIsActive(measureTarget) || boxIsActive(measureTarget)) && !measureTarget.baseBlock
+      ...((centerIsActive(measureTarget) || boxIsActive(measureTarget)) && !measureTarget.layoutContainer
         ? ([1, -1] as const).map((direction) => (
         menuItemWithGeneratedIcon({
           label: `${direction < 0 ? 'Decrease' : 'Increase'} ${
-            boxIsActive(measureTarget) ? 'Box' : 'Center'
-          } padding`,
+            boxIsActive(measureTarget) && centerIsActive(measureTarget)
+              ? 'Box / Center'
+              : boxIsActive(measureTarget) ? 'Box' : 'Center'
+          } padding to ${formatScaleValue(stepValue(
+            measureTarget.node.attrs.padding as ControlValue,
+            spaceValues,
+            direction,
+          ))}`,
           enable: (currentState) => {
             const target = selectedMeasureTarget(currentState);
             return Boolean(
               target
-              && !target.baseBlock
+              && !target.layoutContainer
               && (centerIsActive(target) || boxIsActive(target)),
             );
           },
@@ -1109,7 +1321,7 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
             const target = selectedMeasureTarget(editor.state);
             if (
               !target
-              || target.baseBlock
+              || target.layoutContainer
               || (!centerIsActive(target) && !boxIsActive(target))
             ) return;
             dispatchStructuralEdit(editor, editor.state.tr.setNodeMarkup(target.from, undefined, {
@@ -1119,9 +1331,9 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
                 spaceValues,
                 direction,
               ),
-            }));
+            }), target);
           },
-        }, modifierIconName('padding', direction)!)
+        }, modifierIconName('padding', direction)! as IconName)
       )) : []),
       ...(centerIsActive(measureTarget) ? [menuItemWithGeneratedIcon({
         label: measureTarget.node.attrs.centerText ? 'Uncenter text' : 'Center text',
@@ -1135,9 +1347,9 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
           dispatchStructuralEdit(editor, editor.state.tr.setNodeMarkup(target.from, undefined, {
             ...target.node.attrs,
             centerText: !target.node.attrs.centerText,
-          }));
+          }), target);
         },
-      }, 'center'),
+      }, 'centertext'),
       ] : []),
     ] : [];
     const centerAction = menuItemWithGeneratedIcon({
@@ -1146,9 +1358,9 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
         run: () => {
           const target = selectedMeasureTarget(editor.state);
           if (!target) return;
-          if (target.baseBlock) {
-            const block = selectedBaseBlock(editor.state);
-            if (block) updateBlockLayout(schema, editor, block, 'center');
+          if (target.layoutContainer) {
+            const layoutTarget = selectedLayoutTarget(editor.state);
+            if (layoutTarget) updateBlockLayout(schema, editor, layoutTarget, 'center');
             return;
           }
           dispatchStructuralEdit(editor, editor.state.tr.setNodeMarkup(target.from, undefined, {
@@ -1157,33 +1369,50 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
             ...(!target.node.attrs.center && target.node.attrs.measure
               ? { centerIntrinsic: false }
               : {}),
-          }));
+          }), target);
         },
       }, 'center');
     const sidebarWidthControls = hasSidebarLayout(blockLayouts ?? [])
-      ? ([1, -1] as const).map((direction) => menuItemWithGeneratedIcon({
-        label: `${direction < 0 ? 'Decrease' : 'Increase'} With sidebar sidebar width`,
-        enable: (currentState) => {
-          const selectedBlock = selectedBaseBlock(currentState);
-          return Boolean(
-            selectedBlock
-            && hasSidebarLayout(selectedBlock.node.attrs.layouts as LayoutOption[]),
-          );
-        },
-        run: () => {
-          const selectedBlock = selectedBaseBlock(editor.state);
-          if (!selectedBlock || !hasSidebarLayout(selectedBlock.node.attrs.layouts as LayoutOption[])) {
-            return;
-          }
-          const width = (selectedBlock.node.attrs.sidebarWidth ?? 'auto') as SidebarWidth;
-          dispatchStructuralEdit(editor, editor.state.tr.setNodeMarkup(selectedBlock.from, undefined, {
-            ...selectedBlock.node.attrs,
-            sidebarWidth: stepValue(width, sidebarWidths, direction),
-          }));
-        },
-      }, direction < 0
-        ? 'decreasewithsidebarsidebarwidth'
-        : 'increasewithsidebarsidebarwidth'))
+      ? ([1, -1] as const).map((direction) => {
+        const sidebarWidth = normalizeSidebarWidth(layoutTarget!.node.attrs.sidebarWidth);
+        const nextSidebarWidth = stepValue(sidebarWidth, sidebarWidths, direction);
+        const label = `${direction < 0 ? 'Decrease' : 'Increase'} With sidebar sidebar width to ${
+          formatSidebarWidth(nextSidebarWidth)
+        }`;
+        return menuItemWithGeneratedIcon({
+          label,
+          enable: (currentState) => {
+            const selectedBlock = selectedLayoutTarget(currentState);
+            if (
+              !selectedBlock
+              || !hasSidebarLayout(selectedBlock.node.attrs.layouts as LayoutOption[])
+            ) {
+              return false;
+            }
+            const currentSidebarWidth = normalizeSidebarWidth(selectedBlock.node.attrs.sidebarWidth);
+            return stepValue(currentSidebarWidth, sidebarWidths, direction) !== currentSidebarWidth;
+          },
+          run: () => {
+            const selectedBlock = selectedLayoutTarget(editor.state);
+            if (!selectedBlock || !hasSidebarLayout(selectedBlock.node.attrs.layouts as LayoutOption[])) {
+              return;
+            }
+            const currentSidebarWidth = normalizeSidebarWidth(selectedBlock.node.attrs.sidebarWidth);
+            const updatedSidebarWidth = stepValue(
+              currentSidebarWidth,
+              sidebarWidths,
+              direction,
+            );
+            if (updatedSidebarWidth === currentSidebarWidth) return;
+            dispatchStructuralEdit(editor, editor.state.tr.setNodeMarkup(selectedBlock.from, undefined, {
+              ...selectedBlock.node.attrs,
+              sidebarWidth: updatedSidebarWidth,
+            }));
+          },
+        }, direction < 0
+          ? 'decreasewithsidebarsidebarwidth'
+          : 'increasewithsidebarsidebarwidth', label);
+      })
       : [];
     const sidebarOrientationControl = hasSidebarLayout(blockLayouts ?? [])
       ? (() => {
@@ -1193,14 +1422,14 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
           label: `Move sidebar ${direction}`,
           title: `Move sidebar ${direction}`,
           enable: (currentState) => {
-            const selectedBlock = selectedBaseBlock(currentState);
+            const selectedBlock = selectedLayoutTarget(currentState);
             return Boolean(
               selectedBlock
               && hasSidebarLayout(selectedBlock.node.attrs.layouts as LayoutOption[]),
             );
           },
           run: () => {
-            const selectedBlock = selectedBaseBlock(editor.state);
+            const selectedBlock = selectedLayoutTarget(editor.state);
             if (!selectedBlock || !hasSidebarLayout(selectedBlock.node.attrs.layouts as LayoutOption[])) {
               return;
             }
@@ -1217,24 +1446,18 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
       : null;
     const frameRatioControl = hasLayout('frame')
       ? (() => {
-        const currentRatio = normalizeFrameRatio(block?.node.attrs.frameRatio);
-        const nextRatio = frameRatios[
-          (frameRatios.indexOf(currentRatio) + 1) % frameRatios.length
-        ] as FrameRatio;
-        const label = `Cycle to next ratio ${nextRatio.replace('-', ':')}`;
-
         return menuItemWithRequiredGeneratedIcon({
-          label,
-          title: label,
+          label: frameRatioCycleLabel(state),
+          title: frameRatioCycleLabel,
           enable: (currentState) => {
-            const selectedBlock = selectedBaseBlock(currentState);
+            const selectedBlock = selectedLayoutTarget(currentState);
             return Boolean(
               selectedBlock
               && (selectedBlock.node.attrs.layouts as LayoutOption[]).includes('frame'),
             );
           },
           run: () => {
-            const selectedBlock = selectedBaseBlock(editor.state);
+            const selectedBlock = selectedLayoutTarget(editor.state);
             if (!selectedBlock || !(selectedBlock.node.attrs.layouts as LayoutOption[]).includes('frame')) {
               return;
             }
@@ -1247,7 +1470,7 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
               frameRatio: nextRatio,
             }));
           },
-        }, 'cycleframeratios');
+        }, 'cycleframeratios', frameRatioCycleLabel);
       })()
       : null;
     const descriptionAction = menuItemWithGeneratedIcon({
@@ -1258,21 +1481,16 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
         if (selection && descriptionEnabled(editor.state)) setAriaDescription(editor, selection);
       },
     }, 'setarialabeledby');
-    const convertToBlockAction = menuItemWithGeneratedIcon({
-      label: 'Convert to block',
-      enable: (currentState) => Boolean(selectedTextualNode(currentState)),
+    const wrapInBlockAction = menuItemWithGeneratedIcon({
+      label: 'Wrap in Block',
+      title: wrapInBaseBlockTitle,
+      enable: wrapInBaseBlock,
       run: () => {
-        const selection = selectedTextualNode(editor.state);
-        if (!selection) return;
-        const transaction = editor.state.tr.replaceWith(
-          selection.from,
-          selection.to,
-          schema.node('base_block', null, selection.node),
-        );
-        transaction.setSelection(NodeSelection.create(transaction.doc, selection.from));
-        dispatchStructuralEdit(editor, transaction);
+        if (wrapInBaseBlock(editor.state, editor.dispatch)) {
+          editor.focus();
+        }
       },
-    }, 'converttoblock');
+    }, 'converttoblock', wrapInBaseBlockTitle);
     const coverMainAction = nodeSelection && isCoverChild(nodeSelection)
       ? menuItemWithGeneratedIcon({
         label: nodeSelection.node.attrs.coverMain ? 'Remove cover main' : 'Set as cover main',
@@ -1285,10 +1503,49 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
         },
       }, 'setcovermain')
       : null;
+    const selectedCustomClasses = normalizedCustomClasses(
+      customStylingTarget(state)?.node.attrs.customClasses,
+    );
+    const customStylingControl = new Dropdown([
+      new MenuItem({
+        label: 'Remove custom classes',
+        enable: (currentState) => normalizedCustomClasses(
+          customStylingTarget(currentState)?.node.attrs.customClasses,
+        ).length > 0,
+        run: () => {
+          const target = customStylingTarget(editor.state);
+          if (!target) return;
+          dispatchStructuralEdit(editor, editor.state.tr.setNodeMarkup(target.from, undefined, {
+            ...target.node.attrs,
+            customClasses: [],
+          }));
+        },
+      }),
+      ...customStylingClasses.map((className) => new MenuItem({
+        label: `${selectedCustomClasses.includes(className) ? 'Remove' : 'Add'} ${className}`,
+        enable: (currentState) => customStylingTarget(currentState) !== null,
+        run: () => {
+          const target = customStylingTarget(editor.state);
+          if (!target) return;
+          const currentClasses = normalizedCustomClasses(target.node.attrs.customClasses);
+          const customClasses = currentClasses.includes(className)
+            ? currentClasses.filter((currentClass) => currentClass !== className)
+            : [...currentClasses, className];
+          dispatchStructuralEdit(editor, editor.state.tr.setNodeMarkup(target.from, undefined, {
+            ...target.node.attrs,
+            customClasses,
+          }));
+        },
+      })),
+    ], {
+      label: selectedCustomClasses.length > 0
+        ? `Classes: ${selectedCustomClasses.join(', ')}`
+        : 'Classes',
+    });
     const blockToolbarGroups: MenuElement[][] = [
-      [boxAction, ...layoutControls],
+      [wrapInBlockAction, boxAction, ...layoutControls],
       [centerAction],
-      [blockTagControl],
+      ...(block ? [[blockTagControl]] : []),
     ];
     const modifierToolbarGroups: MenuElement[][] = [
       ...(sidebarOrientationControl ? [[sidebarOrientationControl]] : []),
@@ -1298,55 +1555,59 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
       ...(boxModifierControls.length > 0 ? [boxModifierControls] : []),
       ...(componentConfigurationControls.length > 0 ? [componentConfigurationControls] : []),
       ...(sidebarWidthControls.length > 0 ? [sidebarWidthControls] : []),
+      ...(clusterModifierControls.length > 0 ? [clusterModifierControls] : []),
       ...(genericSpacingModifierControls.length > 0 ? [genericSpacingModifierControls] : []),
     ];
     const exampleToolbarGroups = buildExampleToolbarGroupsWithIcons(schema);
+    const utilityActions: MenuElement[] = [
+      showBlockOutlines
+        ? menuItemWithGeneratedIcon({
+          label: 'Hide block outlines',
+          run: () => {
+            showBlockOutlines = false;
+            shell.classList.remove('show-block-outlines');
+            renderMenu();
+          },
+        }, 'hideoutlines')
+        : menuItemWithGeneratedIcon({
+          label: 'Show block outlines',
+          run: () => {
+            showBlockOutlines = true;
+            shell.classList.add('show-block-outlines');
+            renderMenu();
+          },
+        }, 'hideoutlines'),
+      menuItemWithGeneratedIcon({
+        label: inspectedNode ? `Inspect ${inspectedNode.node.type.name.replace('_', ' ')}` : 'Inspect selection',
+        enable: (currentState) => {
+          const selection = selectedNode(currentState);
+          return Boolean(selection && inspectableNode(selection.node));
+        },
+        run: () => {
+          showBlockInspection = !showBlockInspection;
+          renderMenu();
+        },
+      }, 'inspect'),
+      menuItemWithGeneratedIcon({
+        label: shell.classList.contains('is-fullscreen') ? 'Exit fullscreen' : 'Fullscreen',
+        run: () => {
+          shell.classList.toggle('is-fullscreen');
+          updateFloatingControls();
+          renderMenu();
+        },
+      }, 'fullscreen'),
+    ];
     const toolbarGroups: MenuElement[][][] = [
       [
         ...exampleToolbarGroups.common,
         [
           ...exampleToolbarGroups.nativeBlockActions.flat(),
-          showBlockOutlines
-            ? menuItemWithGeneratedIcon({
-              label: 'Hide block outlines',
-              run: () => {
-                showBlockOutlines = false;
-                shell.classList.remove('show-block-outlines');
-                renderMenu();
-              },
-            }, 'hideoutlines')
-            : menuItemWithGeneratedIcon({
-              label: 'Show block outlines',
-              run: () => {
-                showBlockOutlines = true;
-                shell.classList.add('show-block-outlines');
-                renderMenu();
-              },
-            }, 'hideoutlines'),
-          menuItemWithGeneratedIcon({
-            label: inspectedNode ? `Inspect ${inspectedNode.node.type.name.replace('_', ' ')}` : 'Inspect selection',
-            enable: (currentState) => {
-              const selection = selectedNode(currentState);
-              return Boolean(selection && inspectableNode(selection.node));
-            },
-            run: () => {
-              showBlockInspection = !showBlockInspection;
-              renderMenu();
-            },
-          }, 'inspect'),
-          menuItemWithGeneratedIcon({
-            label: shell.classList.contains('is-fullscreen') ? 'Exit fullscreen' : 'Fullscreen',
-            run: () => {
-              shell.classList.toggle('is-fullscreen');
-              updateFloatingControls();
-              renderMenu();
-            },
-          }, 'fullscreen'),
         ],
+        utilityActions,
       ],
       [
         ...exampleToolbarGroups.text,
-        [descriptionAction, convertToBlockAction],
+        [descriptionAction, customStylingControl],
       ],
       blockToolbarGroups,
       ...(modifierToolbarGroups.length > 0 ? [modifierToolbarGroups] : []),
@@ -1366,6 +1627,10 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
       toolbar.dom.querySelectorAll('.ProseMirror-menuseparator').forEach((divider) => {
         divider.setAttribute('data-toolbar-level', 'second');
       });
+      if (controls[controls.length - 1] === utilityActions) {
+        toolbar.dom.querySelector('.ProseMirror-menuseparator:last-of-type')
+          ?.setAttribute('data-toolbar-spacer', '');
+      }
       group.append(toolbar.dom);
       menu.append(group);
       toolbar.update(state);
@@ -1398,6 +1663,13 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
     },
     editable: () => true,
     handleKeyDown: (_view, event) => {
+      if (
+        event.key === 'Enter'
+        && insertBaseBlockAfterNodeSelection(schema, editor.state, editor.dispatch)
+      ) {
+        event.preventDefault();
+        return true;
+      }
       if (
         (event.metaKey || event.ctrlKey)
         && event.altKey

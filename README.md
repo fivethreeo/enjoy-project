@@ -5,6 +5,11 @@ managed through Django and django-admin, with django-filer providing image
 attachments and previews. The editor supports fullscreen editing of Every
 Layout components.
 
+The Django admin Page editor also provides **Insert image** and **Insert video**
+actions backed by django-filer. Its admin-only picker uses the PageAdmin
+`filer-media/`, `filer-media/folders/`, and `filer-media/upload/` endpoints;
+the standalone Every Layout playground deliberately has no filer dependency.
+
 The public application and the editing experience share an Every Layout
 philosophy: compose small, configurable layout primitives instead of building
 one-off page structures. This keeps authored content and the application UI

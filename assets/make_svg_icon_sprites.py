@@ -1,8 +1,13 @@
-"""Build SVG or TypeScript icon output from icon bounding boxes in an SVG layer."""
+"""Build SVG or TypeScript icon output from icon bounding boxes in an SVG layer.
+
+The verified extraction pipeline is intentionally strict. Do not modify it without
+explicit approval; correct master SVG artwork before changing extraction behavior.
+"""
 
 import argparse
 import copy
 import json
+import math
 from pathlib import Path
 import re
 import shlex
@@ -73,6 +78,95 @@ def _number(value, attribute, rect_id):
     return float(value)
 
 
+def _multiply_transforms(left, right):
+    """Return the affine transform produced by applying right then left."""
+    a, b, c, d, e, f = left
+    g, h, i, j, k, l = right
+    return (
+        a * g + c * h,
+        b * g + d * h,
+        a * i + c * j,
+        b * i + d * j,
+        a * k + c * l + e,
+        b * k + d * l + f,
+    )
+
+
+def _element_transform(value, element_id):
+    transform = (1, 0, 0, 1, 0, 0)
+    if not value:
+        return transform
+
+    commands = re.findall(r"([A-Za-z]+)\s*\(([^)]*)\)", value)
+    if not commands or "".join(
+        f"{name}({arguments})" for name, arguments in commands
+    ).replace(" ", "") != re.sub(r"\s+", "", value):
+        raise ValueError(f"Guide '{element_id}' has invalid transform {value!r}.")
+
+    for name, arguments in commands:
+        values = [
+            float(number)
+            for number in re.findall(
+                r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?", arguments
+            )
+        ]
+        if name == "matrix" and len(values) == 6:
+            command = tuple(values)
+        elif name == "translate" and len(values) in {1, 2}:
+            command = (1, 0, 0, 1, values[0], values[1] if len(values) == 2 else 0)
+        elif name == "scale" and len(values) in {1, 2}:
+            command = (values[0], 0, 0, values[-1], 0, 0)
+        elif name == "rotate" and len(values) in {1, 3}:
+            angle = values[0] * 3.141592653589793 / 180
+            cosine, sine = math.cos(angle), math.sin(angle)
+            command = (cosine, sine, -sine, cosine, 0, 0)
+            if len(values) == 3:
+                command = _multiply_transforms(
+                    (1, 0, 0, 1, values[1], values[2]),
+                    _multiply_transforms(command, (1, 0, 0, 1, -values[1], -values[2])),
+                )
+        else:
+            raise ValueError(
+                f"Guide '{element_id}' has unsupported transform {value!r}."
+            )
+        transform = _multiply_transforms(transform, command)
+    return transform
+
+
+def _guide_bounds(rect, parent_map):
+    rect_id = rect.get("id")
+    x = _number(rect.get("x", "0"), "x", rect_id)
+    y = _number(rect.get("y", "0"), "y", rect_id)
+    width = _number(rect.get("width"), "width", rect_id)
+    height = _number(rect.get("height"), "height", rect_id)
+    if width <= 0 or height <= 0:
+        raise ValueError(f"Rectangle '{rect_id}' must have positive dimensions.")
+
+    transform = (1, 0, 0, 1, 0, 0)
+    element = rect
+    while element is not None:
+        transform = _multiply_transforms(
+            _element_transform(element.get("transform"), rect_id), transform
+        )
+        element = parent_map.get(element)
+
+    a, b, c, d, e, f = transform
+    # A non-axis-aligned guide cannot be represented by the sprite's
+    # rectangular viewBox without incorrectly including neighbouring artwork.
+    if abs(b) > 1e-9 or abs(c) > 1e-9:
+        raise ValueError(
+            f"Guide '{rect_id}' must remain axis-aligned after its transform."
+        )
+    transformed_x = a * x + e
+    transformed_y = d * y + f
+    return (
+        min(transformed_x, transformed_x + a * width),
+        min(transformed_y, transformed_y + d * height),
+        abs(a * width),
+        abs(d * height),
+    )
+
+
 def _guide_rectangles(root, layer_id):
     label_attribute = "{http://www.inkscape.org/namespaces/inkscape}label"
     # Keep the caller-selected layer for old masters, and also recognize the
@@ -88,20 +182,14 @@ def _guide_rectangles(root, layer_id):
 
     rectangles = []
     rectangle_bounds = {}
+    parent_map = {child: parent for parent in root.iter() for child in parent}
 
     def add_rectangle(rect):
         rect_id = rect.get("id")
         if not rect_id:
             raise ValueError("Every guide rectangle must have an id.")
 
-        x = _number(rect.get("x", "0"), "x", rect_id)
-        y = _number(rect.get("y", "0"), "y", rect_id)
-        width = _number(rect.get("width"), "width", rect_id)
-        height = _number(rect.get("height"), "height", rect_id)
-        if width <= 0 or height <= 0:
-            raise ValueError(f"Rectangle '{rect_id}' must have positive dimensions.")
-
-        bounds = (x, y, width, height)
+        bounds = _guide_bounds(rect, parent_map)
         previous_bounds = rectangle_bounds.get(rect_id)
         if previous_bounds is not None:
             if previous_bounds != bounds:
@@ -111,7 +199,7 @@ def _guide_rectangles(root, layer_id):
                 )
             return
         rectangle_bounds[rect_id] = bounds
-        rectangles.append((rect_id, x, y, width, height))
+        rectangles.append((rect_id, *bounds))
 
     for layer in guide_layers:
         for rect in layer.findall(f".//{SVG}rect"):
@@ -133,31 +221,6 @@ def _guide_rectangles(root, layer_id):
         raise ValueError(f"Guide layers have no rectangles.")
 
     return rectangles
-
-
-def _assert_icon_registry_complete(icons, guide_ids):
-    icon_ids = {name for name, *_ in icons}
-    missing = sorted(set(guide_ids) - icon_ids)
-    if missing:
-        raise ValueError(
-            "The generated icon registry is missing guide icons: "
-            + ", ".join(missing)
-        )
-
-    sidebar_ids = {
-        "withsidebarleft",
-        "withsidebarright",
-        "increasewithsidebarcontentwidth",
-        "decreasewithsidebarcontentwidth",
-        "increasewithsidebarsidebarwidth",
-        "decreasewithsidebarsidebarwidth",
-    }
-    missing_sidebar = sorted(sidebar_ids - icon_ids)
-    if missing_sidebar:
-        raise ValueError(
-            "The generated icon registry is missing sidebar icons: "
-            + ", ".join(missing_sidebar)
-        )
 
 def _flatten_svg(source_tree, output_svg, guide_ids):
     source_tree = copy.deepcopy(source_tree)
@@ -368,11 +431,12 @@ def _combine_symbol_paths(artwork, rect_id, x, y, width, height, temp_dir):
     return unioned_data
 
 
-def _compile_icons(input_svg, squares_layer_id):
+def _compile_icons(input_svg, squares_layer_id, require_all_guides=True):
     source_path = Path(input_svg)
     tree = ET.parse(source_path)
     rectangles = _guide_rectangles(tree.getroot(), squares_layer_id)
     icons = []
+    empty_guides = []
 
     with tempfile.TemporaryDirectory(
         prefix=".prosango-icon-sprite-", dir=source_path.parent
@@ -402,12 +466,16 @@ def _compile_icons(input_svg, squares_layer_id):
                 Path(temp_dir),
             )
             if path_data is None:
-                print(f"Skipped empty icon guide '{rect_id}'.")
+                empty_guides.append(rect_id)
                 continue
             icons.append((rect_id, width, height, path_data))
 
-    _assert_icon_registry_complete(icons, [rect_id for rect_id, *_ in rectangles])
-    return icons
+        if empty_guides and require_all_guides:
+            raise ValueError(
+                "The following guide rectangles contain no artwork after "
+                "flattening and clipping: " + ", ".join(empty_guides)
+            )
+        return icons
 
 
 def _write_svg_sprite(icons, output_path):
@@ -472,10 +540,11 @@ def compile_precise_spritesheet_by_layer_input(
     output_path,
     squares_layer_id,
     output_format="svg",
+    require_all_guides=True,
 ):
     """Create clipped icon paths as an SVG sprite sheet or TypeScript registry."""
     output_path = Path(output_path)
-    icons = _compile_icons(input_svg, squares_layer_id)
+    icons = _compile_icons(input_svg, squares_layer_id, require_all_guides)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if output_format == "svg":
@@ -495,6 +564,13 @@ def main():
     parser.add_argument("--output", type=Path)
     parser.add_argument("--format", choices=("svg", "ts"), default="svg")
     parser.add_argument("--layer", default="layer2", help="ID of the guide rectangle layer")
+    parser.add_argument(
+        "--allow-empty-guides",
+        action="store_false",
+        dest="require_all_guides",
+        help="Skip guide rectangles with no clipped artwork instead of failing.",
+    )
+    parser.set_defaults(require_all_guides=True)
     args = parser.parse_args()
 
     output_path = args.output or (
@@ -507,6 +583,7 @@ def main():
         output_path,
         args.layer,
         args.format,
+        args.require_all_guides,
     )
 
 

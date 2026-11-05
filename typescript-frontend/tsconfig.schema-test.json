@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "verbatimModuleSyntax": false,
+    "ignoreDeprecations": "6.0",
+    "outDir": ".schema-test",
+    "declaration": false,
+    "sourceMap": false,
+    "rootDir": "."
+  },
+  "include": [
+    "src/playground-document.ts",
+    "src/prosemirror-editor/django-media-schema.ts",
+    "src/prosemirror-editor/node-id.ts",
+    "src/prosemirror-editor/move-block.ts",
+    "src/prosemirror-editor/modal-popup.ts",
+    "src/prosemirror-editor/setup.ts",
+    "src/prosemirror-editor/wrap-in-block.ts",
+    "prosemirror-breadcrumbs/src/index.ts",
+    "tests/playground-document.test.ts"
+  ]
+}

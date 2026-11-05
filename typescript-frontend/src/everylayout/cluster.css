@@ -3,7 +3,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--gap, var(--s1));
-  justify-content: var(--justify, flex-start);
+  justify-content: flex-start;
 }
 
 .cluster\:between {

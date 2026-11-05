@@ -21,3 +21,9 @@
 .center\:intrinsic > .grid {
   inline-size: 100%;
 }
+
+.center\:intrinsic :is(.reel, :has(.reel)) {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  inline-size: 100%;
+}

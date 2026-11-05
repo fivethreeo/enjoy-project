@@ -1,24 +1,123 @@
 import { exampleSetup } from 'prosemirror-example-setup';
-import { Schema, type Node as ProseMirrorNode, type NodeSpec } from 'prosemirror-model';
+import {
+  Schema,
+  Slice,
+  type DOMOutputSpec,
+  type Node as ProseMirrorNode,
+  type NodeSpec,
+} from 'prosemirror-model';
 import { schema as basicSchema } from 'prosemirror-schema-basic';
 import { addListNodes } from 'prosemirror-schema-list';
-import { Plugin, PluginKey, type Transaction } from 'prosemirror-state';
+import {
+  NodeSelection,
+  Plugin,
+  PluginKey,
+  Selection,
+  TextSelection,
+  type EditorState,
+  type Transaction,
+} from 'prosemirror-state';
 import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view';
 import { breadcrumbPlugin } from '../../prosemirror-breadcrumbs/src/index';
 import { modalPopupPlugin } from './modal-popup';
+import { customStylingClasses } from './custom-styling';
 
 const richTextNodes = addListNodes(
   basicSchema.spec.nodes.remove('image'),
   'paragraph block*',
   'block',
 );
+const everyLayoutBlockClipboardMarker = 'data-everylayout-block';
+
+export const customStylingNodeAttrs = {
+  customClasses: { default: [] as string[] },
+};
+
+function normalizedCustomClasses(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return [...new Set(value.filter(
+    (className): className is string => (
+      typeof className === 'string' && customStylingClasses.includes(className)
+    ),
+  ))];
+}
+
+function customClassesFromElement(element: Element | string): string[] {
+  return element instanceof HTMLElement
+    ? normalizedCustomClasses([...element.classList])
+    : [];
+}
+
+function addCustomClassesToDOMOutput(
+  output: ReturnType<NonNullable<NodeSpec['toDOM']>>,
+  customClasses: readonly string[],
+): DOMOutputSpec {
+  if (customClasses.length === 0 || !Array.isArray(output)) {
+    return output;
+  }
+
+  const [tag, firstChild, ...children] = output;
+  const attrs = firstChild !== null
+    && typeof firstChild === 'object'
+    && !Array.isArray(firstChild)
+    ? firstChild as Record<string, unknown>
+    : null;
+  const className = [attrs?.class, ...customClasses].filter(Boolean).join(' ');
+  return attrs
+    ? [tag, { ...attrs, class: className }, ...children] as DOMOutputSpec
+    : [tag, { class: className }, firstChild, ...children] as DOMOutputSpec;
+}
+
+export function withCustomStylingNodeSpec(spec: NodeSpec): NodeSpec {
+  if (!spec.toDOM) {
+    return spec;
+  }
+
+  const toDOM = spec.toDOM;
+  return {
+    ...spec,
+    attrs: {
+      ...spec.attrs,
+      ...customStylingNodeAttrs,
+    },
+    toDOM: (node) => addCustomClassesToDOMOutput(
+      toDOM(node),
+      normalizedCustomClasses(node.attrs.customClasses),
+    ),
+    parseDOM: spec.parseDOM?.map((rule) => ({
+      ...rule,
+      getAttrs: (element) => {
+        const attrs = rule.getAttrs?.(element) ?? rule.attrs ?? {};
+        if (attrs === false) {
+          return false;
+        }
+        return {
+          ...attrs,
+          customClasses: customClassesFromElement(element),
+        };
+      },
+    })),
+  };
+}
+
+function withCustomStylingNodeSpecs(nodes: typeof richTextNodes) {
+  let customStyledNodes = nodes;
+  nodes.forEach((name, spec) => {
+    if (name !== 'doc' && name !== 'text') {
+      customStyledNodes = customStyledNodes.update(name, withCustomStylingNodeSpec(spec));
+    }
+  });
+  return customStyledNodes;
+}
 
 export const richTextSchema = new Schema({
   nodes: richTextNodes,
   marks: basicSchema.spec.marks,
 });
 
-const layoutClasses = {
+export const layoutClasses = {
   box: 'box',
   center: 'center',
   cluster: 'cluster',
@@ -30,7 +129,9 @@ const layoutClasses = {
   stack: 'stack',
   switcher: 'switcher',
 } as const;
-const layoutLabels: Record<keyof typeof layoutClasses, string> = {
+export type LayoutOption = keyof typeof layoutClasses;
+export const layoutOptions = Object.keys(layoutClasses) as LayoutOption[];
+const layoutLabels: Record<LayoutOption, string> = {
   box: 'Box',
   center: 'Center',
   cluster: 'Cluster',
@@ -51,6 +152,26 @@ export const defaultMeasure: Measure = 'lg';
 export const gridMinimums = [16, 20, 24, 28, 32] as const;
 export type GridMinimum = typeof gridMinimums[number];
 export const defaultGridMinimum: GridMinimum = 16;
+export const clusterJustifyValues = ['start', 'end', 'between', 'around', 'center'] as const;
+export type ClusterJustify = typeof clusterJustifyValues[number];
+export const defaultClusterJustify: ClusterJustify = 'start';
+const clusterJustifyClasses: Record<ClusterJustify, string | null> = {
+  start: null,
+  end: 'justify-content:flex-end',
+  between: 'justify-content:space-between',
+  around: 'justify-content:space-around',
+  center: 'justify-content:center',
+};
+export const clusterAlignValues = ['start', 'center', 'end', 'stretch', 'baseline'] as const;
+export type ClusterAlign = typeof clusterAlignValues[number];
+export const defaultClusterAlign: ClusterAlign = 'start';
+const clusterAlignClasses: Record<ClusterAlign, string> = {
+  start: 'align-items:flex-start',
+  center: 'align-items:center',
+  end: 'align-items:flex-end',
+  stretch: 'align-items:stretch',
+  baseline: 'align-items:baseline',
+};
 
 export function normalizeFrameRatio(value: unknown): FrameRatio {
   return frameRatios.includes(value as FrameRatio)
@@ -62,6 +183,18 @@ export function normalizeGridMinimum(value: unknown): GridMinimum {
   return gridMinimums.includes(value as GridMinimum)
     ? value as GridMinimum
     : defaultGridMinimum;
+}
+
+export function normalizeClusterJustify(value: unknown): ClusterJustify {
+  return clusterJustifyValues.includes(value as ClusterJustify)
+    ? value as ClusterJustify
+    : defaultClusterJustify;
+}
+
+export function normalizeClusterAlign(value: unknown): ClusterAlign {
+  return clusterAlignValues.includes(value as ClusterAlign)
+    ? value as ClusterAlign
+    : defaultClusterAlign;
 }
 
 export const baseBlockTags = [
@@ -145,11 +278,39 @@ function centeredNodeClasses(node: Parameters<NonNullable<NodeSpec['toDOM']>>[0]
   return classes.length > 0 ? classes.join(' ') : undefined;
 }
 
-function baseBlockClasses(node: Parameters<NonNullable<NodeSpec['toDOM']>>[0]) {
+export const layoutNodeAttrs = {
+  layouts: { default: [] },
+  coverMain: { default: false },
+  space: { default: 1 },
+  padding: { default: 1 },
+  boxInvert: { default: false },
+  boxBorder: { default: false },
+  centerIntrinsic: { default: true },
+  measure: { default: null },
+  centerText: { default: false },
+  gap: { default: 1 },
+  gridMin: { default: defaultGridMinimum },
+  sidebarBreakpoint: { default: 66 },
+  sidebarWidth: { default: 'auto' },
+  sidebarPosition: { default: 'left' },
+  switcherMax: { default: 5 },
+  switcherThreshold: { default: 30 },
+  frameRatio: { default: defaultFrameRatio },
+  clusterJustify: { default: defaultClusterJustify },
+  clusterAlign: { default: defaultClusterAlign },
+  clusterAlignCenter: { default: false },
+};
+
+/** Serializes shared Every Layout component state for any layout-capable node. */
+export function layoutNodeClasses(node: Parameters<NonNullable<NodeSpec['toDOM']>>[0]) {
   const layouts = [...new Set(
-    node.attrs.layouts as Array<keyof typeof layoutClasses>,
-  )];
-  const hasLayout = (layout: keyof typeof layoutClasses) => layouts.includes(layout);
+    (node.attrs.layouts as unknown[]).filter(
+      (layout): layout is LayoutOption => (
+        typeof layout === 'string' && layout in layoutClasses
+      ),
+    ),
+  )] as LayoutOption[];
+  const hasLayout = (layout: LayoutOption) => layouts.includes(layout);
   const classes: string[] = layouts.map((layout) => layoutClasses[layout]);
 
   if (node.attrs.measure) {
@@ -184,6 +345,17 @@ function baseBlockClasses(node: Parameters<NonNullable<NodeSpec['toDOM']>>[0]) {
   ) {
     classes.push(gapClass(node.attrs.gap));
   }
+  if (hasLayout('cluster')) {
+    const justify = normalizeClusterJustify(node.attrs.clusterJustify);
+    const justifyClass = clusterJustifyClasses[justify];
+    if (justifyClass) {
+      classes.push(justifyClass);
+    }
+    const align = normalizeClusterAlign(
+      node.attrs.clusterAlignCenter ? 'center' : node.attrs.clusterAlign,
+    );
+    classes.push(clusterAlignClasses[align]);
+  }
   if (hasLayout('grid')) {
     classes.push(`grid-min-${normalizeGridMinimum(node.attrs.gridMin)}`);
   }
@@ -210,35 +382,86 @@ function baseBlockClasses(node: Parameters<NonNullable<NodeSpec['toDOM']>>[0]) {
   return classes.length > 0 ? classes.join(' ') : undefined;
 }
 
-function hasSidebarLayout(layouts: readonly (keyof typeof layoutClasses)[]) {
+/** Restores Every Layout state from classes emitted by `layoutNodeClasses`. */
+export function layoutNodeAttrsFromDOM(element: HTMLElement) {
+  const classes = element.classList;
+  const layouts = layoutOptions.filter((layout) => classes.contains(layoutClasses[layout]));
+  const scale = (name: 'space' | 'padding' | 'gap') => {
+    if (classes.contains(`${name}-zero`)) return zeroSpace;
+    const value = [...classes].find((className) => className.startsWith(`${name}-s`));
+    const parsed = value ? Number(value.slice(`${name}-s`.length)) : null;
+    return Number.isInteger(parsed) ? parsed : undefined;
+  };
+  const numbered = (prefix: string) => {
+    const value = [...classes].find((className) => className.startsWith(prefix));
+    return value ? Number(value.slice(prefix.length)) : undefined;
+  };
+  const space = scale('space');
+  const padding = scale('padding');
+  const gap = scale('gap');
+  const gridMin = numbered('grid-min-');
+  const sidebarBreakpoint = numbered('content-min-');
+  const sidebarWidth = numbered('sidebar-width-');
+  const switcherMax = numbered('switcher:max');
+  const switcherThreshold = numbered('switcher-threshold-');
+  const ratio = [...classes].find((className) => className.startsWith('frame:'));
+  const measure = [...classes].find((className) => className.startsWith('measure:'));
+  const clusterJustify = classes.contains('justify-content:flex-end')
+    || classes.contains('cluster:end')
+    ? 'end'
+    : classes.contains('justify-content:space-between')
+      || classes.contains('cluster:between')
+      ? 'between'
+      : defaultClusterJustify;
+  const clusterAlign = classes.contains('align-items:center')
+    || classes.contains('cluster:center')
+    ? 'center'
+    : classes.contains('align-items:flex-end')
+      ? 'end'
+      : classes.contains('align-items:stretch')
+        ? 'stretch'
+        : classes.contains('align-items:baseline')
+          ? 'baseline'
+          : defaultClusterAlign;
+
+  return {
+    layouts,
+    ...(space === undefined ? {} : { space }),
+    ...(padding === undefined ? {} : { padding }),
+    ...(gap === undefined ? {} : { gap }),
+    boxInvert: classes.contains('box:invert'),
+    boxBorder: classes.contains('box:border'),
+    centerIntrinsic: !classes.contains('measure:') && !classes.contains('center:intrinsic')
+      ? true
+      : classes.contains('center:intrinsic'),
+    centerText: classes.contains('center:text'),
+    ...(measure ? { measure: measureClass(measure.slice('measure:'.length)) } : {}),
+    ...(gridMin === undefined ? {} : { gridMin: normalizeGridMinimum(gridMin) }),
+    ...(sidebarBreakpoint === undefined ? {} : { sidebarBreakpoint }),
+    sidebarPosition: classes.contains('with-sidebar:right') ? 'right' : 'left',
+    sidebarWidth: sidebarWidth === undefined ? 'auto' : sidebarWidth,
+    ...(switcherMax === undefined ? {} : { switcherMax }),
+    ...(switcherThreshold === undefined ? {} : { switcherThreshold }),
+    ...(ratio ? { frameRatio: normalizeFrameRatio(ratio.slice('frame:'.length)) } : {}),
+    clusterJustify,
+    clusterAlign,
+    clusterAlignCenter: clusterAlign === 'center',
+  };
+}
+
+function hasSidebarLayout(layouts: readonly LayoutOption[]) {
   return layouts.includes('sidebar');
 }
 
 function baseBlock(): NodeSpec {
   return {
     group: 'layout_block',
-    content: '(base_block | block)+',
+    content: '(block | base_block)+',
     attrs: {
-      layouts: { default: [] },
       tag: { default: 'div' },
       id: { default: null },
       ariaDescribedBy: { default: null },
-      coverMain: { default: false },
-      space: { default: 1 },
-      padding: { default: 1 },
-      boxInvert: { default: false },
-      boxBorder: { default: false },
-      centerIntrinsic: { default: true },
-      measure: { default: null },
-      centerText: { default: false },
-      gap: { default: 1 },
-      gridMin: { default: defaultGridMinimum },
-      sidebarBreakpoint: { default: 66 },
-      sidebarWidth: { default: 'auto' },
-      sidebarPosition: { default: 'left' },
-      switcherMax: { default: 5 },
-      switcherThreshold: { default: 30 },
-      frameRatio: { default: defaultFrameRatio },
+      ...layoutNodeAttrs,
     },
     toDOM: (node) => {
       const tag = baseBlockTags.includes(node.attrs.tag)
@@ -247,14 +470,33 @@ function baseBlock(): NodeSpec {
       return [
         tag,
         {
+          [everyLayoutBlockClipboardMarker]: '',
           'data-cover-main': node.attrs.coverMain ? '' : undefined,
           id: node.attrs.id,
           'aria-describedby': node.attrs.ariaDescribedBy,
-          class: baseBlockClasses(node),
+          class: layoutNodeClasses(node),
         },
         0,
       ];
     },
+    parseDOM: [{
+      tag: `[${everyLayoutBlockClipboardMarker}]`,
+      getAttrs: (element) => {
+        const dom = element as HTMLElement;
+        const tag = dom.tagName.toLowerCase();
+        if (!baseBlockTags.includes(tag as BaseBlockTag)) {
+          return false;
+        }
+
+        return {
+          tag,
+          id: dom.id || null,
+          ariaDescribedBy: dom.getAttribute('aria-describedby'),
+          coverMain: dom.hasAttribute('data-cover-main'),
+          ...layoutNodeAttrsFromDOM(dom),
+        };
+      },
+    }],
   };
 }
 
@@ -352,9 +594,10 @@ function reelOverflowPlugin() {
       const observedByReel = new Map<HTMLElement, Set<Element>>();
       let destroyed = false;
       let measuring = false;
+      let measureFrame: number | null = null;
       const resizeObserver = typeof ResizeObserver === 'undefined'
         ? null
-        : new ResizeObserver(() => measureOverflow());
+        : new ResizeObserver(() => scheduleMeasure());
 
       function reelsInDocument() {
         const reels: Array<{ position: number; element: HTMLElement }> = [];
@@ -382,6 +625,7 @@ function reelOverflowPlugin() {
       }
 
       function measureOverflow() {
+        measureFrame = null;
         if (destroyed || measuring) {
           return;
         }
@@ -414,6 +658,13 @@ function reelOverflowPlugin() {
         }
       }
 
+      function scheduleMeasure() {
+        if (destroyed || measureFrame !== null) {
+          return;
+        }
+        measureFrame = requestAnimationFrame(measureOverflow);
+      }
+
       function syncReels() {
         const reels = reelsInDocument();
         const reelElements = new Set(reels.map(({ element }) => element));
@@ -439,7 +690,9 @@ function reelOverflowPlugin() {
           }
           observedByReel.set(reel, observed);
         }
-        measureOverflow();
+        // Plugin views are constructed before the EditorView is assigned to its
+        // host variable. Dispatching here can invoke the host callback too early.
+        scheduleMeasure();
       }
 
       syncReels();
@@ -449,6 +702,9 @@ function reelOverflowPlugin() {
         },
         destroy() {
           destroyed = true;
+          if (measureFrame !== null) {
+            cancelAnimationFrame(measureFrame);
+          }
           resizeObserver?.disconnect();
           observedByReel.clear();
         },
@@ -458,8 +714,9 @@ function reelOverflowPlugin() {
 }
 
 export const everyLayoutSchema = new Schema({
-  nodes: richTextNodes
+  nodes: withCustomStylingNodeSpecs(richTextNodes
     .update('paragraph', {
+      ...(richTextNodes.get('paragraph') as NodeSpec),
       attrs: {
         coverMain: { default: false },
         ...centeredNodeAttrs,
@@ -473,6 +730,7 @@ export const everyLayoutSchema = new Schema({
       }, 0],
     })
     .update('heading', {
+      ...(richTextNodes.get('heading') as NodeSpec),
       attrs: {
         level: { default: 1 },
         coverMain: { default: false },
@@ -500,12 +758,121 @@ export const everyLayoutSchema = new Schema({
       }, 0],
     })
     .update('doc', { content: '(base_block | block)+' })
-    .addToEnd('base_block', baseBlock()),
+    .addToEnd('base_block', baseBlock())),
   marks: basicSchema.spec.marks,
 });
 
 export function richTextPlugins(): Plugin[] {
   return exampleSetup({ schema: richTextSchema, menuBar: false });
+}
+
+export function pasteAfterNodeSelection(
+  state: EditorState,
+  slice: Slice,
+  dispatch?: (transaction: Transaction) => void,
+): boolean {
+  if (!(state.selection instanceof NodeSelection)) {
+    return false;
+  }
+
+  const insertionPoint = state.selection.to;
+  const transaction = state.tr.replaceRange(insertionPoint, insertionPoint, slice);
+  if (!transaction.docChanged) {
+    return false;
+  }
+
+  const pastedEnd = transaction.mapping.map(insertionPoint, 1);
+  transaction.setSelection(Selection.near(transaction.doc.resolve(pastedEnd), -1));
+  dispatch?.(transaction);
+  return true;
+}
+
+export function insertBaseBlockAfterNodeSelection(
+  schema: Schema,
+  state: EditorState,
+  dispatch?: (transaction: Transaction) => void,
+): boolean {
+  if (
+    !(state.selection instanceof NodeSelection)
+    || state.selection.node.type.name !== 'base_block'
+  ) {
+    return false;
+  }
+
+  const baseBlockType = schema.nodes.base_block;
+  const paragraphType = schema.nodes.paragraph;
+  if (!baseBlockType || !paragraphType) {
+    return false;
+  }
+
+  const selectedLayouts = state.selection.node.attrs.layouts as unknown[];
+  const hasBox = selectedLayouts.includes('box');
+  const insertionPoint = state.selection.to;
+  const block = baseBlockType.create(
+    hasBox
+      ? {
+        layouts: ['box'],
+        padding: state.selection.node.attrs.padding,
+        boxInvert: state.selection.node.attrs.boxInvert,
+        boxBorder: state.selection.node.attrs.boxBorder,
+      }
+      : null,
+    paragraphType.create(),
+  );
+  const transaction = state.tr.insert(insertionPoint, block);
+  transaction.setSelection(TextSelection.create(transaction.doc, insertionPoint + 2));
+  dispatch?.(transaction.scrollIntoView());
+  return true;
+}
+
+function pasteSliceAtSelection(
+  state: EditorState,
+  slice: Slice,
+  dispatch: (transaction: Transaction) => void,
+): boolean {
+  const transaction = state.tr.replaceSelection(slice);
+  if (!transaction.docChanged) {
+    return false;
+  }
+
+  dispatch(transaction.scrollIntoView());
+  return true;
+}
+
+function pasteAfterNodeSelectionPlugin() {
+  let nodeClipboard: Slice | null = null;
+
+  const captureNodeClipboard = (view: EditorView) => {
+    nodeClipboard = view.state.selection instanceof NodeSelection
+      ? view.state.selection.content()
+      : null;
+    return false;
+  };
+
+  return new Plugin({
+    props: {
+      handleDOMEvents: {
+        copy: captureNodeClipboard,
+        cut: captureNodeClipboard,
+      },
+      handlePaste(view, event, slice) {
+        const storedSlice = nodeClipboard;
+        nodeClipboard = null;
+        const pastedHTML = event.clipboardData?.getData('text/html') ?? '';
+        const pastedSlice = storedSlice && pastedHTML.includes(everyLayoutBlockClipboardMarker)
+          ? storedSlice
+          : slice;
+
+        if (view.state.selection instanceof NodeSelection) {
+          return pasteAfterNodeSelection(view.state, pastedSlice, view.dispatch);
+        }
+
+        return pastedSlice === slice
+          ? false
+          : pasteSliceAtSelection(view.state, pastedSlice, view.dispatch);
+      },
+    },
+  });
 }
 
 export function prosemirrorEditorShellPlugin(shell: HTMLElement): Plugin {
@@ -532,6 +899,7 @@ export function prosemirrorEditorShellPlugin(shell: HTMLElement): Plugin {
 export function everyLayoutPlugins(schema: Schema, shell: HTMLElement): Plugin[] {
   return [
     ...exampleSetup({ schema, menuBar: false }),
+    pasteAfterNodeSelectionPlugin(),
     prosemirrorEditorShellPlugin(shell),
     modalPopupPlugin(shell),
     preserveTextBlockAttrs(),

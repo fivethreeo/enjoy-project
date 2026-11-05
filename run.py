@@ -10,7 +10,6 @@ IS_WINDOWS = os.name == 'nt'
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 TS_DIR = os.path.join(ROOT_DIR, "typescript-frontend")
 PY_DIR = os.path.join(ROOT_DIR, "django-project")
-JAVASCRIPT_EMIT_DEBOUNCE_SECONDS = 3
 ICON_BUILD_DEBOUNCE_SECONDS = 1
 MASTER_ICONS_SVG = os.path.join(ROOT_DIR, "assets", "master_icons.svg")
 ICON_GENERATOR = os.path.join(ROOT_DIR, "assets", "make_svg_icon_sprites.py")
@@ -71,18 +70,6 @@ def run_ts(args, envs, wait=True):
 def run_npm(args, envs, wait=True):
     cmd = ["npm", *args]
     run_command(cmd, cwd=TS_DIR, env_updates=envs, wait=wait)
-
-def newest_emitted_asset_mtime():
-    newest_mtime = 0
-    dist_dir = os.path.join(TS_DIR, "dist")
-    for root, _, files in os.walk(dist_dir):
-        for filename in files:
-            if filename.endswith(".js") or filename.endswith("manifest.json"):
-                newest_mtime = max(
-                    newest_mtime,
-                    os.stat(os.path.join(root, filename)).st_mtime_ns,
-                )
-    return newest_mtime
 
 def file_mtime(path):
     return os.stat(path).st_mtime_ns
@@ -146,8 +133,6 @@ def run_parallel(args, envs):
             PY_DIR,
         )
 
-    emitted_asset_mtime = newest_emitted_asset_mtime()
-    restart_django_at = None
     master_icons_mtime = file_mtime(MASTER_ICONS_SVG)
     build_icons_at = None
     ts_process = start_process(
@@ -171,18 +156,6 @@ def run_parallel(args, envs):
                     build_typescript_icons()
                 except subprocess.CalledProcessError as error:
                     print(f"❌ TypeScript icon generation failed: {error}")
-            latest_asset_mtime = newest_emitted_asset_mtime()
-            if latest_asset_mtime > emitted_asset_mtime:
-                emitted_asset_mtime = latest_asset_mtime
-                restart_django_at = time.monotonic() + JAVASCRIPT_EMIT_DEBOUNCE_SECONDS
-            if restart_django_at is None or time.monotonic() < restart_django_at:
-                continue
-            restart_django_at = None
-            print("🔄 JavaScript emitted; restarting Django...")
-            django_process.terminate()
-            django_process.wait()
-            active_processes.remove(django_process)
-            django_process = start_django()
     except KeyboardInterrupt:
         print("\n🛑 Shutting down all services gracefully...")
     finally:

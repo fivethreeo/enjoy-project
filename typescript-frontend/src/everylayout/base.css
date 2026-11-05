@@ -1,4 +1,5 @@
-:root {
+:root,
+.prosemirror-editor-shell {
   --ratio: 1.5;
   --s-5: calc(var(--s-4) / var(--ratio));
   --s-4: calc(var(--s-3) / var(--ratio));
@@ -36,7 +37,6 @@
 
   font-family: sans-serif;
   font-size: 125%;
-  
 }
 
 *, :after, :before {
@@ -49,6 +49,23 @@
 
 [hidden]+* {
   margin-block-start: 0 !important;
+}
+
+* {
+  max-inline-size: var(--measure);
+}
+
+html,
+body,
+div,
+header,
+nav,
+main,
+section,
+article,
+aside,
+footer {
+  max-inline-size: none;
 }
 
 html, body {
@@ -67,4 +84,7 @@ h3 {
 }
 img {
   max-inline-size: 100%;
+}
+figure {
+  margin: 0;
 }

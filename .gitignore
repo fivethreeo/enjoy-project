@@ -39,7 +39,9 @@ coverage/
 # Local Django data
 django-project/db.sqlite3
 django-project/media/
+django-project/test-media/
 
 # Local tooling and editor state
 ink.sh
 *.swp
+assets/master_icons.svg.2026_10_28_15_53_28.0.svg

@@ -15,4 +15,12 @@
   block-size: 100%;
   object-fit: cover;
 }
-  
+
+figure.frame {
+  position: relative;
+}
+
+figure.frame figcaption {
+  position: absolute;
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+}

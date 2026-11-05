@@ -14,6 +14,7 @@ import {
   type MenuItemSpec,
 } from 'prosemirror-menu';
 import { icons } from '../icons';
+import { moveBlockDown, moveBlockUp } from './move-block';
 
 type ExampleMenuItems = ReturnType<typeof buildMenuItems>;
 type ExampleMenuItemIdentity =
@@ -24,6 +25,7 @@ type ExampleMenuItemIdentity =
   | 'wrapBulletList'
   | 'wrapOrderedList';
 export type IconName = keyof typeof icons;
+type MenuItemText = string | ((state: EditorState) => string);
 
 function hasGeneratedIcon(iconName: string): iconName is IconName {
   return Object.prototype.hasOwnProperty.call(icons, iconName);
@@ -43,18 +45,21 @@ export const exampleMenuIconMappings: ReadonlyArray<
 export function menuItemWithGeneratedIcon(
   spec: MenuItemSpec,
   iconName: string,
+  ariaLabel?: MenuItemText,
 ) {
   const icon = hasGeneratedIcon(iconName) ? icons[iconName] : undefined;
-  return new MenuItem({
+  const item = new MenuItem({
     ...spec,
     ...(icon ? { icon } : {}),
     title: spec.title ?? spec.label,
   });
+  return addDynamicMenuItemText(item, ariaLabel);
 }
 
 export function menuItemWithRequiredGeneratedIcon(
   spec: MenuItemSpec,
   iconName: IconName,
+  ariaLabel?: MenuItemText,
 ) {
   const icon = icons[iconName];
   if (!icon) {
@@ -68,6 +73,38 @@ export function menuItemWithRequiredGeneratedIcon(
   if (item.spec.icon !== icon) {
     throw new Error(`Menu item did not retain generated icon: ${iconName}`);
   }
+  return addDynamicMenuItemText(item, ariaLabel);
+}
+
+function addDynamicMenuItemText(item: MenuItem, ariaLabel?: MenuItemText) {
+  const render = item.render.bind(item);
+  item.render = (view) => {
+    const rendered = render(view);
+    const updateText = (state: EditorState) => {
+      const { title } = item.spec;
+      if (title) {
+        rendered.dom.setAttribute(
+          'title',
+          typeof title === 'function' ? title(state) : title,
+        );
+      }
+      if (ariaLabel) {
+        rendered.dom.setAttribute(
+          'aria-label',
+          typeof ariaLabel === 'function' ? ariaLabel(state) : ariaLabel,
+        );
+      }
+    };
+    const update = rendered.update;
+    updateText(view.state);
+    return {
+      ...rendered,
+      update(state) {
+        updateText(state);
+        return update(state);
+      },
+    };
+  };
   return item;
 }
 
@@ -150,6 +187,39 @@ export const joinUpItemWithTextblockSupport = new MenuItem({
   select: joinWithAbove,
 });
 
+function moveBlockMenuItem(
+  label: 'Move Node Up' | 'Move Node Down',
+  command: typeof moveBlockUp,
+  iconName?: IconName,
+) {
+  const spec: MenuItemSpec = {
+    label,
+    title: label,
+    enable: (state) => command(state),
+    run: (state, dispatch, view) => {
+      if (command(state, dispatch)) {
+        view.focus();
+      }
+    },
+  };
+  if (iconName) {
+    return menuItemWithRequiredGeneratedIcon(spec, iconName, label);
+  }
+  return new MenuItem({
+    ...spec,
+    render: () => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = label;
+      button.setAttribute('aria-label', label);
+      return button;
+    },
+  });
+}
+
+export const moveBlockUpItem = moveBlockMenuItem('Move Node Up', moveBlockUp, 'movenodeup');
+export const moveBlockDownItem = moveBlockMenuItem('Move Node Down', moveBlockDown, 'movenodedown');
+
 function iconMappings(items: ExampleMenuItems) {
   const mappedItems = new Map<MenuItem, IconName>();
   for (const [identity, iconName] of exampleMenuIconMappings) {
@@ -201,11 +271,18 @@ export function buildExampleToolbarGroupsWithIcons(schema: Schema) {
   const nativeBlockActions = items.blockMenu
     .flat()
     .filter(isNativeBlockAction)
-    .map((element) => (
-      element instanceof MenuItem && element.spec.run === joinUpItem.spec.run
-        ? joinUpItemWithTextblockSupport
-        : element
-    ));
+    .flatMap((element) => {
+      if (!(element instanceof MenuItem)) {
+        return [element];
+      }
+      if (element.spec.run === joinUpItem.spec.run) {
+        return [joinUpItemWithTextblockSupport];
+      }
+      if (element.spec.run === liftItem.spec.run) {
+        return [element, moveBlockUpItem, moveBlockDownItem];
+      }
+      return [element];
+    });
   const textBlockMenu = items.blockMenu
     .map((group) => group.filter((element) => !isNativeBlockAction(element)));
 
