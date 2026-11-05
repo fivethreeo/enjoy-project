@@ -18,7 +18,7 @@ function isEditorStyleSheet(link: HTMLLinkElement): boolean {
   return new URL(link.href, document.baseURI).pathname.split('/').includes('editor');
 }
 
-function installEditorStyleSheet(root: ShadowRoot): void {
+function installEditorStyleSheet(root: ShadowRoot): HTMLLinkElement {
   const source = Array.from(document.querySelectorAll<HTMLLinkElement>('link'))
     .find(isEditorStyleSheet);
 
@@ -27,6 +27,7 @@ function installEditorStyleSheet(root: ShadowRoot): void {
   }
 
   root.append(source);
+  return source;
 }
 
 function initialDocument(element: HTMLTextAreaElement) {
@@ -55,11 +56,11 @@ export function setupEditor(element: HTMLTextAreaElement): EditorView {
   const host = document.createElement('section');
   const root = host.attachShadow({ mode: 'open' });
   const shell = document.createElement('section');
-  installEditorStyleSheet(root);
+  const styleSheet = installEditorStyleSheet(root);
   root.append(shell);
   element.insertAdjacentElement('afterend', host);
   element.hidden = true;
-  return mountEveryLayoutEditor({
+  const editor = mountEveryLayoutEditor({
     mount: shell,
     schema: djangoMediaSchema,
     initialDocument: initialDocument(element),
@@ -84,7 +85,11 @@ export function setupEditor(element: HTMLTextAreaElement): EditorView {
       ];
     },
     onChange: ({ view }) => save(view, element),
-  }).view;
+  });
+  const refreshLayout = () => requestAnimationFrame(editor.refreshLayout);
+  styleSheet.addEventListener('load', refreshLayout, { once: true });
+  refreshLayout();
+  return editor.view;
 }
 
 function initializeEditors() {

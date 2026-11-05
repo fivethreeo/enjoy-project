@@ -5,19 +5,3 @@
   gap: var(--gap, var(--s1));
   justify-content: flex-start;
 }
-
-.cluster\:between {
-    --justify: space-between;
-}
-
-.cluster\:around {
-  --justify: space-around;
-}
-
-.cluster\:end {
-    --justify: flex-end;
-}
-
-.cluster\:center {
-    align-items: center;
-}

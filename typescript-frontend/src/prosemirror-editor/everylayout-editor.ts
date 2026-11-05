@@ -869,6 +869,7 @@ export type EveryLayoutEditorOptions = {
 
 export type EveryLayoutEditor = {
   view: EditorView;
+  refreshLayout: () => void;
   destroy: () => void;
 };
 
@@ -1704,6 +1705,7 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
   renderMenu();
   return {
     view: editor,
+    refreshLayout: updateFloatingControls,
     destroy() {
       window.removeEventListener('resize', updateFloatingControls);
       window.removeEventListener('scroll', updateFloatingControls);
