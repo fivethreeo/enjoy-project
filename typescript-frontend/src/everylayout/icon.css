@@ -9,5 +9,10 @@
 .with-icon {
   display: inline-flex;
   align-items: baseline;
-  gap: var(--gap, var(--s0));
+  --space: 0.15em;
+}
+
+
+.with-icon .icon {
+  margin-inline-end: var(--space, 0.15em);
 }

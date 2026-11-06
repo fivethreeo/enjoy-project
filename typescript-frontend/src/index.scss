@@ -24,3 +24,26 @@ body {
   border-color: #d7c278;
   background: linear-gradient(145deg, #fff6d8, #ecdb9e);
 }
+
+.docs-nav-toggle {
+  display: none;
+  width: 100%;
+  margin-top: var(--s1);
+  font-size: var(--s1);
+  font-weight: 700;
+  text-align: center;
+}
+
+@media (max-width: 827px) {
+  .with-js .docs-nav-toggle {
+    display: block;
+  }
+
+  .with-js .docs-nav {
+    display: none;
+  }
+
+  [aria-expanded='true'] + .docs-nav {
+    display: block;
+  }
+}
