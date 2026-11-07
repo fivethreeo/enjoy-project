@@ -1,4 +1,9 @@
-import { exampleSetup } from 'prosemirror-example-setup';
+import { buildInputRules, buildKeymap } from 'prosemirror-example-setup';
+import { baseKeymap } from 'prosemirror-commands';
+import { dropCursor } from 'prosemirror-dropcursor';
+import { gapCursor } from 'prosemirror-gapcursor';
+import { history } from 'prosemirror-history';
+import { keymap } from 'prosemirror-keymap';
 import {
   DOMSerializer,
   Schema,
@@ -32,6 +37,22 @@ const richTextNodes = addListNodes(
   'paragraph block*',
   'block',
 );
+
+function standardEditorPlugins(schema: Schema): Plugin[] {
+  return [
+    buildInputRules(schema),
+    keymap(buildKeymap(schema)),
+    keymap(baseKeymap),
+    dropCursor(),
+    gapCursor(),
+    history(),
+    new Plugin({
+      props: {
+        attributes: { class: 'ProseMirror-example-setup-style' },
+      },
+    }),
+  ];
+}
 const everyLayoutBlockClipboardMarker = 'data-everylayout-block';
 export type CopiedId = readonly [id: string, text: string];
 export const copiedIdPluginKey = new PluginKey<CopiedId | null>('copied-id');
@@ -1142,7 +1163,7 @@ export function createAriaHiddenDOMSerializer(schema: Schema) {
 }
 
 export function richTextPlugins(): Plugin[] {
-  return exampleSetup({ schema: richTextSchema, menuBar: false });
+  return standardEditorPlugins(richTextSchema);
 }
 
 export function pasteAfterNodeSelection(
@@ -1277,7 +1298,7 @@ export function prosemirrorEditorShellPlugin(shell: HTMLElement): Plugin {
 /** Builds the standard Every Layout editor plugins for the schema mounted by a host. */
 export function everyLayoutPlugins(schema: Schema, shell: HTMLElement): Plugin[] {
   return [
-    ...exampleSetup({ schema, menuBar: false }),
+    ...standardEditorPlugins(schema),
     pasteAfterNodeSelectionPlugin(),
     copiedIdPlugin(),
     editorVisibilityNodeViewsPlugin(schema),
