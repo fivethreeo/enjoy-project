@@ -60,6 +60,102 @@
   outline: 2px solid #08f !important;
 }
 
+.prosemirror-editor-shell .ProseMirror [hidden] {
+  display: block !important;
+}
+
+.prosemirror-editor-shell :is(.ProseMirror.vh, .ProseMirror .vh) {
+  clip: auto !important;
+  clip-path: none !important;
+  height: auto !important;
+  overflow: visible !important;
+  position: static !important;
+  white-space: normal !important;
+  width: auto !important;
+}
+
+.prosemirror-editor-shell .ProseMirror :is(
+  p,
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  blockquote,
+  pre,
+  li,
+  figcaption
+) {
+  position: relative;
+}
+
+.prosemirror-editor-shell .ProseMirror .prosemirror-visibility-marked {
+  position: relative;
+}
+
+.prosemirror-editor-shell .ProseMirror .prosemirror-visibility-marked::after {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  inset-block-start: 0.125rem;
+  inset-inline-end: 0.125rem;
+  display: block;
+  inline-size: 1.25em;
+  block-size: 1.25em;
+  pointer-events: none;
+  background-color: transparent;
+  background-image: var(--prosemirror-visibility-icon);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+.prosemirror-editor-shell .ProseMirror .prosemirror-visibility-marked:not(.prosemirror-visibility-marked--inline)::after {
+  box-sizing: border-box;
+  inline-size: 1.75em;
+  block-size: 1.75em;
+  padding: 0.125em;
+  border: 1px solid currentColor;
+  border-radius: 0.25em;
+  background-color: #fff;
+  background-size: calc(100% - 0.25em);
+}
+
+.prosemirror-editor-shell .ProseMirror [data-hidden]::after,
+.prosemirror-editor-shell .ProseMirror a:has(.prosemirror-visibility-marked--hidden)::after {
+  --prosemirror-visibility-icon: var(--prosemirror-visibility-icon-hidden);
+}
+
+.prosemirror-editor-shell .ProseMirror [data-vh]::after,
+.prosemirror-editor-shell .ProseMirror a:has(.prosemirror-visibility-marked--visuallyhidden)::after {
+  --prosemirror-visibility-icon: var(--prosemirror-visibility-icon-visuallyhidden);
+}
+
+.prosemirror-editor-shell .ProseMirror [aria-hidden='true']::after,
+.prosemirror-editor-shell .ProseMirror a:has(.prosemirror-visibility-marked--ariahidden)::after {
+  --prosemirror-visibility-icon: var(--prosemirror-visibility-icon-ariahidden);
+}
+
+.prosemirror-editor-shell .ProseMirror .prosemirror-visibility-marked--inline::after,
+.prosemirror-editor-shell .ProseMirror a:has(.prosemirror-visibility-marked--inline)::after {
+  position: static;
+  display: inline-block;
+  margin-inline-start: 0.125em;
+  vertical-align: text-bottom;
+}
+
+.prosemirror-editor-shell .ProseMirror a:has(.prosemirror-visibility-marked--inline) .prosemirror-visibility-marked--inline::after {
+  content: none;
+}
+
+.prosemirror-editor-shell:not(.show-block-outlines) .ProseMirror :is(
+  .prosemirror-visibility-marked,
+  a:has(.prosemirror-visibility-marked--inline)
+)::after {
+  content: none;
+}
+
 .prosemirror-editor-shell .block-inspection {
   display: block;
   padding: 0.25rem 0.5rem;
@@ -164,6 +260,15 @@
   overflow: auto;
   background: var(--color-light, #fff);
   box-shadow: 0 0.5rem 2rem rgb(0 0 0 / 30%);
+}
+
+.prosemirror-editor-shell .prosemirror-modal-popup.prosemirror-link-modal {
+  inline-size: min(24rem, calc(100% - 2rem));
+  font-size: calc(var(--f0) * 1.25);
+}
+
+.prosemirror-link-modal :is(input, button) {
+  font: inherit;
 }
 
 .prosemirror-editor-shell .prosemirror-modal-popup__title {

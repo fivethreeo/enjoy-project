@@ -1,10 +1,14 @@
 import { exampleSetup } from 'prosemirror-example-setup';
 import {
+  DOMSerializer,
   Schema,
   Slice,
+  type Fragment,
   type DOMOutputSpec,
+  type Mark,
   type Node as ProseMirrorNode,
   type NodeSpec,
+  type MarkSpec,
 } from 'prosemirror-model';
 import { schema as basicSchema } from 'prosemirror-schema-basic';
 import { addListNodes } from 'prosemirror-schema-list';
@@ -21,6 +25,7 @@ import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view';
 import { breadcrumbPlugin } from '../../prosemirror-breadcrumbs/src/index';
 import { modalPopupPlugin } from './modal-popup';
 import { customStylingClasses } from './custom-styling';
+import { icons } from '../icons';
 
 const richTextNodes = addListNodes(
   basicSchema.spec.nodes.remove('image'),
@@ -28,9 +33,20 @@ const richTextNodes = addListNodes(
   'block',
 );
 const everyLayoutBlockClipboardMarker = 'data-everylayout-block';
+export type CopiedId = readonly [id: string, text: string];
+export const copiedIdPluginKey = new PluginKey<CopiedId | null>('copied-id');
+export const blockSizeClasses = [
+  'block-size:50vb',
+  'block-size:40vb',
+  'block-size:30vb',
+  'block-size:20vb',
+] as const;
 
 export const customStylingNodeAttrs = {
   customClasses: { default: [] as string[] },
+  hidden: { default: false },
+  visuallyHidden: { default: false },
+  ariaHidden: { default: false },
 };
 
 function normalizedCustomClasses(value: unknown): string[] {
@@ -39,7 +55,10 @@ function normalizedCustomClasses(value: unknown): string[] {
   }
   return [...new Set(value.filter(
     (className): className is string => (
-      typeof className === 'string' && customStylingClasses.includes(className)
+      typeof className === 'string' && (
+        blockSizeClasses.includes(className as typeof blockSizeClasses[number])
+        || customStylingClasses.includes(className)
+      )
     ),
   ))];
 }
@@ -53,8 +72,11 @@ function customClassesFromElement(element: Element | string): string[] {
 function addCustomClassesToDOMOutput(
   output: ReturnType<NonNullable<NodeSpec['toDOM']>>,
   customClasses: readonly string[],
+  hidden: boolean,
+  visuallyHidden: boolean,
+  ariaHidden: boolean,
 ): DOMOutputSpec {
-  if (customClasses.length === 0 || !Array.isArray(output)) {
+  if ((customClasses.length === 0 && !hidden && !visuallyHidden && !ariaHidden) || !Array.isArray(output)) {
     return output;
   }
 
@@ -64,10 +86,18 @@ function addCustomClassesToDOMOutput(
     && !Array.isArray(firstChild)
     ? firstChild as Record<string, unknown>
     : null;
-  const className = [attrs?.class, ...customClasses].filter(Boolean).join(' ');
+  const className = [
+    attrs?.class,
+    ...customClasses,
+    ...(visuallyHidden ? ['vh'] : []),
+  ].filter(Boolean).join(' ');
+  const visibilityAttrs = {
+    ...(hidden ? { hidden: '' } : {}),
+    ...(ariaHidden ? { 'aria-hidden': 'true' } : {}),
+  };
   return attrs
-    ? [tag, { ...attrs, class: className }, ...children] as DOMOutputSpec
-    : [tag, { class: className }, firstChild, ...children] as DOMOutputSpec;
+    ? [tag, { ...attrs, ...visibilityAttrs, class: className }, ...children] as DOMOutputSpec
+    : [tag, { ...visibilityAttrs, class: className }, firstChild, ...children] as DOMOutputSpec;
 }
 
 export function withCustomStylingNodeSpec(spec: NodeSpec): NodeSpec {
@@ -85,6 +115,9 @@ export function withCustomStylingNodeSpec(spec: NodeSpec): NodeSpec {
     toDOM: (node) => addCustomClassesToDOMOutput(
       toDOM(node),
       normalizedCustomClasses(node.attrs.customClasses),
+      node.attrs.hidden === true,
+      node.attrs.visuallyHidden === true,
+      node.attrs.ariaHidden === true,
     ),
     parseDOM: spec.parseDOM?.map((rule) => ({
       ...rule,
@@ -96,10 +129,153 @@ export function withCustomStylingNodeSpec(spec: NodeSpec): NodeSpec {
         return {
           ...attrs,
           customClasses: customClassesFromElement(element),
+          hidden: element instanceof HTMLElement && element.hidden,
+          visuallyHidden: element instanceof HTMLElement && element.classList.contains('vh'),
+          ariaHidden: element instanceof HTMLElement && element.getAttribute('aria-hidden') === 'true',
         };
       },
     })),
   };
+}
+
+type VisibilityMarkerState = 'hidden' | 'visuallyhidden' | 'ariahidden';
+
+function visibilityMarkerAttrs(state: VisibilityMarkerState, inline = false) {
+  return {
+    class: inline
+      ? `prosemirror-visibility-marked prosemirror-visibility-marked--${state} prosemirror-visibility-marked--inline`
+      : `prosemirror-visibility-marked prosemirror-visibility-marked--${state}`,
+  };
+}
+
+function visibilityMarkerIconUrl(state: VisibilityMarkerState) {
+  const icon = icons[state === 'ariahidden' ? 'setarialabeledby' : state];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${icon.width} ${icon.height}"><path d="${icon.path}"/></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
+
+function visibilityMarkerPlugin() {
+  return new Plugin({
+    view: (view) => {
+      const states = ['hidden', 'visuallyhidden', 'ariahidden'] as const;
+      states.forEach((state) => {
+        view.dom.style.setProperty(
+          `--prosemirror-visibility-icon-${state}`,
+          visibilityMarkerIconUrl(state),
+        );
+      });
+      return {
+        destroy: () => states.forEach((state) => {
+          view.dom.style.removeProperty(`--prosemirror-visibility-icon-${state}`);
+        }),
+      };
+    },
+  });
+}
+
+function copiedIdPlugin() {
+  return new Plugin<CopiedId | null>({
+    key: copiedIdPluginKey,
+    state: {
+      init: () => null,
+      apply(transaction, copiedId) {
+        return transaction.getMeta(copiedIdPluginKey) as CopiedId | undefined
+          ?? copiedId;
+      },
+    },
+  });
+}
+
+function removeEditorVisibilityAttributes(dom: Node) {
+  if (dom instanceof HTMLElement) {
+    dom.removeAttribute('hidden');
+    dom.classList.remove('vh');
+  }
+}
+
+function nodeVisibilityMarkerState(node: ProseMirrorNode): VisibilityMarkerState | null {
+  if (node.attrs.hidden === true) {
+    return 'hidden';
+  }
+  if (node.attrs.visuallyHidden === true) {
+    return 'visuallyhidden';
+  }
+  return node.attrs.ariaHidden === true ? 'ariahidden' : null;
+}
+
+function addEditorVisibilityMarkerClass(dom: Node, node: ProseMirrorNode) {
+  const state = nodeVisibilityMarkerState(node);
+  if (state && dom instanceof HTMLElement) {
+    applyEditorVisibilityData(dom, state);
+    dom.classList.add(...visibilityMarkerAttrs(state).class.split(' '));
+  }
+}
+
+function markVisibilityMarkerState(mark: Mark): VisibilityMarkerState | null {
+  const state = mark.type.name === 'visibility'
+    ? mark.attrs.state
+    : ['link', 'strong', 'em', 'code'].includes(mark.type.name)
+      ? mark.attrs.visibilityState
+      : null;
+  return ['hidden', 'visuallyhidden', 'ariahidden'].includes(state)
+    ? state as VisibilityMarkerState
+    : null;
+}
+
+function applyEditorVisibilityData(dom: HTMLElement, state: VisibilityMarkerState) {
+  if (state === 'hidden') {
+    dom.setAttribute('data-hidden', '');
+  } else if (state === 'visuallyhidden') {
+    dom.setAttribute('data-vh', '');
+  }
+}
+
+function addEditorVisibilityMarkClass(dom: Node, mark: Mark) {
+  const state = markVisibilityMarkerState(mark);
+  if (state && dom instanceof HTMLElement) {
+    applyEditorVisibilityData(dom, state);
+    dom.classList.add(...visibilityMarkerAttrs(state, true).class.split(' '));
+  }
+}
+
+function editorVisibilityNodeViewsPlugin(schema: Schema) {
+  const nodeViews = Object.fromEntries(
+    Object.entries(schema.nodes)
+      .filter(([, type]) => type.spec.toDOM && 'customClasses' in (type.spec.attrs ?? {}))
+      .map(([name, type]) => [name, (node: ProseMirrorNode) => {
+        const rendered = DOMSerializer.renderSpec(document, type.spec.toDOM!(node));
+        removeEditorVisibilityAttributes(rendered.dom);
+        addEditorVisibilityMarkerClass(rendered.dom, node);
+        return {
+          dom: rendered.dom,
+          contentDOM: rendered.contentDOM,
+        };
+      }]),
+  );
+  const markView = (mark: Mark) => {
+    const rendered = DOMSerializer.renderSpec(
+      document,
+      mark.type.spec.toDOM!(mark, true),
+    );
+    removeEditorVisibilityAttributes(rendered.dom);
+    addEditorVisibilityMarkClass(rendered.dom, mark);
+    return {
+      dom: rendered.dom,
+      contentDOM: rendered.contentDOM,
+    };
+  };
+  return new Plugin({
+    props: {
+      nodeViews,
+      markViews: {
+        link: markView,
+        strong: markView,
+        em: markView,
+        code: markView,
+        visibility: markView,
+      },
+    },
+  });
 }
 
 function withCustomStylingNodeSpecs(nodes: typeof richTextNodes) {
@@ -112,9 +288,99 @@ function withCustomStylingNodeSpecs(nodes: typeof richTextNodes) {
   return customStyledNodes;
 }
 
+const visibilityMarkSpec: MarkSpec = {
+  attrs: {
+    state: { default: 'hidden' },
+  },
+  toDOM: (mark) => ['span', mark.attrs.state === 'hidden'
+    ? { hidden: '' }
+    : mark.attrs.state === 'visuallyhidden'
+      ? { class: 'vh' }
+      : { 'aria-hidden': 'true' }, 0],
+  parseDOM: [
+    { tag: 'span[hidden]', attrs: { state: 'hidden' } },
+    { tag: 'span.vh', attrs: { state: 'visuallyhidden' } },
+    { tag: 'span[aria-hidden="true"]', attrs: { state: 'ariahidden' } },
+  ],
+};
+
+const linkMarkSpec: MarkSpec = {
+  attrs: {
+    href: {},
+    title: { default: null },
+    visibilityState: { default: null },
+  },
+  inclusive: false,
+  parseDOM: [{
+    tag: 'a[href]',
+    getAttrs: (element) => {
+      const state = element.hasAttribute('hidden')
+        ? 'hidden'
+        : element.classList.contains('vh')
+          ? 'visuallyhidden'
+          : element.getAttribute('aria-hidden') === 'true'
+            ? 'ariahidden'
+            : null;
+      return {
+        href: element.getAttribute('href'),
+        title: element.getAttribute('title'),
+        visibilityState: state,
+      };
+    },
+  }],
+  toDOM: (mark) => {
+    const { href, title, visibilityState } = mark.attrs;
+    return ['a', {
+      href,
+      title,
+      ...(visibilityState === 'hidden' ? { hidden: '' } : {}),
+      ...(visibilityState === 'visuallyhidden' ? { class: 'vh' } : {}),
+      ...(visibilityState === 'ariahidden' ? { 'aria-hidden': 'true' } : {}),
+    }, 0];
+  },
+};
+
+function markWithVisibilityState(spec: MarkSpec): MarkSpec {
+  const toDOM = spec.toDOM!;
+  return {
+    ...spec,
+    attrs: {
+      ...spec.attrs,
+      visibilityState: { default: null },
+    },
+    toDOM: (mark, inline) => {
+      const output = toDOM(mark, inline);
+      if (!Array.isArray(output) || !mark.attrs.visibilityState) {
+        return output;
+      }
+      const [tag, firstChild, ...children] = output;
+      const attrs = firstChild !== null
+        && typeof firstChild === 'object'
+        && !Array.isArray(firstChild)
+        ? firstChild as Record<string, unknown>
+        : {};
+      const visibilityAttrs = mark.attrs.visibilityState === 'hidden'
+        ? { hidden: '' }
+        : mark.attrs.visibilityState === 'visuallyhidden'
+          ? { class: 'vh' }
+          : { 'aria-hidden': 'true' };
+      return [tag, { ...attrs, ...visibilityAttrs }, ...(Object.keys(attrs).length > 0 ? children : [firstChild, ...children])] as DOMOutputSpec;
+    },
+  };
+}
+
+function marksWithVisibility() {
+  return basicSchema.spec.marks
+    .update('link', linkMarkSpec)
+    .update('em', markWithVisibilityState(basicSchema.spec.marks.get('em') as MarkSpec))
+    .update('strong', markWithVisibilityState(basicSchema.spec.marks.get('strong') as MarkSpec))
+    .update('code', markWithVisibilityState(basicSchema.spec.marks.get('code') as MarkSpec))
+    .addToEnd('visibility', visibilityMarkSpec);
+}
+
 export const richTextSchema = new Schema({
   nodes: richTextNodes,
-  marks: basicSchema.spec.marks,
+  marks: marksWithVisibility(),
 });
 
 export const layoutClasses = {
@@ -460,7 +726,7 @@ function baseBlock(): NodeSpec {
     attrs: {
       tag: { default: 'div' },
       id: { default: null },
-      ariaDescribedBy: { default: null },
+      ariaLabelledBy: { default: null },
       ...layoutNodeAttrs,
     },
     toDOM: (node) => {
@@ -473,7 +739,7 @@ function baseBlock(): NodeSpec {
           [everyLayoutBlockClipboardMarker]: '',
           'data-cover-main': node.attrs.coverMain ? '' : undefined,
           id: node.attrs.id,
-          'aria-describedby': node.attrs.ariaDescribedBy,
+          'aria-labelledby': node.attrs.ariaLabelledBy,
           class: layoutNodeClasses(node),
         },
         0,
@@ -491,7 +757,7 @@ function baseBlock(): NodeSpec {
         return {
           tag,
           id: dom.id || null,
-          ariaDescribedBy: dom.getAttribute('aria-describedby'),
+          ariaLabelledBy: dom.getAttribute('aria-labelledby'),
           coverMain: dom.hasAttribute('data-cover-main'),
           ...layoutNodeAttrsFromDOM(dom),
         };
@@ -759,8 +1025,121 @@ export const everyLayoutSchema = new Schema({
     })
     .update('doc', { content: '(base_block | block)+' })
     .addToEnd('base_block', baseBlock())),
-  marks: basicSchema.spec.marks,
+  marks: marksWithVisibility(),
 });
+
+function isAriaHiddenMark(mark: Mark) {
+  return mark.type.name === 'visibility' && mark.attrs.state === 'ariahidden';
+}
+
+class AriaHiddenDOMSerializer extends DOMSerializer {
+  private renderMark(mark: Mark, inline: boolean, options: { document?: Document }) {
+    const toDOM = this.marks[mark.type.name];
+    return toDOM
+      ? DOMSerializer.renderSpec(
+        options.document ?? document,
+        toDOM(mark, inline),
+      )
+      : null;
+  }
+
+  private renderNode(node: ProseMirrorNode, options: { document?: Document }) {
+    const domDocument = options.document ?? document;
+    if (node.isText) {
+      return domDocument.createTextNode(node.text ?? '');
+    }
+
+    const { dom, contentDOM } = DOMSerializer.renderSpec(
+      domDocument,
+      this.nodes[node.type.name](node),
+    );
+    if (contentDOM) {
+      if (node.isLeaf) {
+        throw new RangeError('Content hole not allowed in a leaf node spec');
+      }
+      this.serializeFragment(node.content, options, contentDOM);
+    }
+    return dom;
+  }
+
+  serializeFragment(
+    fragment: Fragment,
+    options: { document?: Document } = {},
+    target?: HTMLElement | DocumentFragment,
+  ) {
+    const domDocument = options.document ?? document;
+    const output = target ?? domDocument.createDocumentFragment();
+    let top: HTMLElement | DocumentFragment = output;
+    const active: Array<[Mark, HTMLElement | DocumentFragment]> = [];
+
+    fragment.forEach((node) => {
+      if (active.length > 0 || node.marks.length > 0) {
+        const ariaHidden = node.marks.some(isAriaHiddenMark);
+        const hasWrapper = node.marks.some((mark) => (
+          !isAriaHiddenMark(mark) && Boolean(this.marks[mark.type.name])
+        ));
+        const activeAriaHidden = active.some(([mark]) => isAriaHiddenMark(mark));
+        let keep = 0;
+        let rendered = 0;
+        if (ariaHidden === activeAriaHidden) {
+          while (keep < active.length && rendered < node.marks.length) {
+            const next = node.marks[rendered];
+            if (!this.marks[next.type.name]) {
+              rendered += 1;
+              continue;
+            }
+            if (!next.eq(active[keep][0]) || next.type.spec.spanning === false) {
+              break;
+            }
+            keep += 1;
+            rendered += 1;
+          }
+        }
+        while (keep < active.length) {
+          top = active.pop()![1];
+        }
+
+        let ariaApplied = ariaHidden && active.some(([mark]) => !isAriaHiddenMark(mark));
+        while (rendered < node.marks.length) {
+          const mark = node.marks[rendered];
+          rendered += 1;
+          if (isAriaHiddenMark(mark)) {
+            if (hasWrapper) {
+              active.push([mark, top]);
+            } else {
+              const fallback = domDocument.createElement('span');
+              fallback.setAttribute('aria-hidden', 'true');
+              active.push([mark, top]);
+              top.append(fallback);
+              top = fallback;
+            }
+            continue;
+          }
+
+          const markDOM = this.renderMark(mark, node.isInline, options);
+          if (!markDOM) {
+            continue;
+          }
+          if (ariaHidden && !ariaApplied) {
+            markDOM.dom.setAttribute('aria-hidden', 'true');
+            ariaApplied = true;
+          }
+          active.push([mark, top]);
+          top.append(markDOM.dom);
+          top = markDOM.contentDOM ?? markDOM.dom;
+        }
+      }
+      top.append(this.renderNode(node, options));
+    });
+
+    return output;
+  }
+}
+
+export function createAriaHiddenDOMSerializer(schema: Schema) {
+  const serializer = DOMSerializer.fromSchema(schema);
+  return new AriaHiddenDOMSerializer(serializer.nodes, serializer.marks);
+}
 
 export function richTextPlugins(): Plugin[] {
   return exampleSetup({ schema: richTextSchema, menuBar: false });
@@ -900,6 +1279,9 @@ export function everyLayoutPlugins(schema: Schema, shell: HTMLElement): Plugin[]
   return [
     ...exampleSetup({ schema, menuBar: false }),
     pasteAfterNodeSelectionPlugin(),
+    copiedIdPlugin(),
+    editorVisibilityNodeViewsPlugin(schema),
+    visibilityMarkerPlugin(),
     prosemirrorEditorShellPlugin(shell),
     modalPopupPlugin(shell),
     preserveTextBlockAttrs(),

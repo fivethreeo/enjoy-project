@@ -57,7 +57,68 @@ assert.equal(
   (customStyledParagraphDOM[1] as { class?: string }).class,
   'custom-highlight',
 );
+const visibleParagraph = everyLayoutSchema.node('paragraph', {
+  id: 'visible-paragraph',
+}, everyLayoutSchema.text('Visible'));
+const visibleParagraphDOM = everyLayoutSchema.nodes.paragraph.spec.toDOM!(visibleParagraph);
+assert.ok(Array.isArray(visibleParagraphDOM));
+assert.equal((visibleParagraphDOM[1] as { id?: string }).id, 'visible-paragraph');
+const hiddenParagraph = everyLayoutSchema.node('paragraph', {
+  customClasses: ['block-size:50vb'],
+  hidden: true,
+  visuallyHidden: true,
+}, everyLayoutSchema.text('Hidden in published output'));
+const hiddenParagraphDOM = everyLayoutSchema.nodes.paragraph.spec.toDOM!(hiddenParagraph);
+assert.ok(Array.isArray(hiddenParagraphDOM));
+assert.equal((hiddenParagraphDOM[1] as { hidden?: string }).hidden, '');
+assert.equal((hiddenParagraphDOM[1] as { class?: string }).class, 'block-size:50vb vh');
+const ariaHiddenParagraph = everyLayoutSchema.node('paragraph', {
+  ariaHidden: true,
+}, everyLayoutSchema.text('ARIA hidden in published output'));
+const ariaHiddenParagraphDOM = everyLayoutSchema.nodes.paragraph.spec.toDOM!(ariaHiddenParagraph);
+assert.ok(Array.isArray(ariaHiddenParagraphDOM));
+assert.equal((ariaHiddenParagraphDOM[1] as { 'aria-hidden'?: string })['aria-hidden'], 'true');
+const hiddenText = everyLayoutSchema.text('Hidden text', [
+  everyLayoutSchema.marks.visibility.create({ state: 'hidden' }),
+]);
+const hiddenTextDOM = everyLayoutSchema.marks.visibility.spec.toDOM!(
+  hiddenText.marks[0],
+  true,
+);
+assert.deepEqual(hiddenTextDOM, ['span', { hidden: '' }, 0]);
+const visuallyHiddenTextDOM = everyLayoutSchema.marks.visibility.spec.toDOM!(
+  everyLayoutSchema.marks.visibility.create({ state: 'visuallyhidden' }),
+  true,
+);
+assert.deepEqual(visuallyHiddenTextDOM, ['span', { class: 'vh' }, 0]);
+const ariaHiddenTextDOM = everyLayoutSchema.marks.visibility.spec.toDOM!(
+  everyLayoutSchema.marks.visibility.create({ state: 'ariahidden' }),
+  true,
+);
+assert.deepEqual(ariaHiddenTextDOM, ['span', { 'aria-hidden': 'true' }, 0]);
+const hiddenLinkDOM = everyLayoutSchema.marks.link.spec.toDOM!(
+  everyLayoutSchema.marks.link.create({
+    href: '#held-id',
+    title: 'Held label',
+    visibilityState: 'hidden',
+  }),
+  true,
+);
+assert.deepEqual(hiddenLinkDOM, ['a', {
+  href: '#held-id',
+  title: 'Held label',
+  hidden: '',
+}, 0]);
 assert.ok('customClasses' in (djangoMediaSchema.nodes.image_media.spec.attrs ?? {}));
+const labelledBlock = everyLayoutSchema.node('base_block', {
+  ariaLabelledBy: 'source-label',
+}, everyLayoutSchema.node('paragraph'));
+const labelledBlockDOM = everyLayoutSchema.nodes.base_block.spec.toDOM!(labelledBlock);
+assert.ok(Array.isArray(labelledBlockDOM));
+assert.equal(
+  (labelledBlockDOM[1] as { 'aria-labelledby'?: string })['aria-labelledby'],
+  'source-label',
+);
 
 const paragraph = everyLayoutSchema.node(
   'paragraph',
@@ -249,7 +310,7 @@ assert.equal(
 
 const boxedBlock = everyLayoutSchema.node('base_block', {
   id: 'source-block',
-  ariaDescribedBy: 'source-description',
+  ariaLabelledBy: 'source-label',
   tag: 'section',
   layouts: ['box', 'stack'],
   padding: 3,
@@ -281,7 +342,7 @@ assert.equal(insertedBlock.attrs.space, 1);
 assert.equal(insertedBlock.attrs.boxInvert, true);
 assert.equal(insertedBlock.attrs.boxBorder, true);
 assert.equal(insertedBlock.attrs.id, null);
-assert.equal(insertedBlock.attrs.ariaDescribedBy, null);
+assert.equal(insertedBlock.attrs.ariaLabelledBy, null);
 assert.equal(insertedBlock.childCount, 1);
 assert.equal(insertedBlock.firstChild!.type.name, 'paragraph');
 assert.equal(insertedBlock.textContent, '');

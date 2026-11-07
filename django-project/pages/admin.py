@@ -50,6 +50,7 @@ class PageImageInline(admin.TabularInline):
 @admin.register(Page)
 class PageAdmin(admin.ModelAdmin):
     form = PageAdminForm
+    save_on_top = True
     exclude = ('images',)
     inlines = (PageImageInline,)
     list_display = ('title', 'slug', 'author', 'created', 'updated')

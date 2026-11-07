@@ -1,6 +1,6 @@
 import type { Node as ProseMirrorNode } from 'prosemirror-model';
 
-export const maximumGeneratedIdLength = 64;
+export const maximumGeneratedIdLength = 25;
 
 export function idTextFromNode(node: ProseMirrorNode): string {
   if (node.isTextblock) {
@@ -34,7 +34,7 @@ export function slugifyId(text: string): string {
     .slice(0, maximumGeneratedIdLength)
     .replace(/-+$/g, '');
 
-  return slug || 'description';
+  return slug || 'label';
 }
 
 export function uniqueNodeId(

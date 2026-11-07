@@ -7,11 +7,13 @@
     "build": "rsbuild build",
     "dev": "rsbuild",
     "preview": "rsbuild preview",
+    "test:browser": "playwright test",
     "test:playground-document": "rm -rf .schema-test && tsc -p tsconfig.schema-test.json && printf '{\"type\":\"commonjs\"}\\n' > .schema-test/package.json && node .schema-test/tests/playground-document.test.js && rm -rf .schema-test"
   },
   "devDependencies": {
     "@rsbuild/core": "^2.2.14",
     "@rsbuild/plugin-sass": "^2.0.1",
+    "@playwright/test": "^1.58.2",
     "@types/node": "^24.19.2",
     "sass": "^1.105.2",
     "typescript": "^6.0.3"

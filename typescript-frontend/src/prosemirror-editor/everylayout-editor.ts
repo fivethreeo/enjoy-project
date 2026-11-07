@@ -1,7 +1,8 @@
-import { Node as ProseMirrorNode, type Schema } from 'prosemirror-model';
+import { Node as ProseMirrorNode, type Mark, type Schema } from 'prosemirror-model';
 import {
   EditorState,
   NodeSelection,
+  TextSelection,
   type Plugin,
 } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
@@ -24,9 +25,12 @@ import {
   type IconName,
 } from './example-menu-icons';
 import { customStylingClasses } from './custom-styling';
-import { uniqueNodeId } from './node-id';
+import { idTextFromNode, uniqueNodeId } from './node-id';
+import { openModalPopup } from './modal-popup';
 import {
   baseBlockTags,
+  blockSizeClasses,
+  copiedIdPluginKey,
   defaultClusterAlign,
   defaultClusterJustify,
   defaultMeasure,
@@ -78,12 +82,22 @@ const sidebarWidths = ['auto', 12, 16, 20, 24, 28, 32] as const;
 type CustomStylingTarget = {
   node: ProseMirrorNode;
   from: number;
+  depth: number | null;
 };
+
+type VisibilityTarget =
+  | { kind: 'node'; node: ProseMirrorNode; from: number }
+  | { kind: 'text'; from: number; to: number; state: VisibilityState; mark?: Mark };
+
+type VisibilityState = 'hidden' | 'visuallyhidden' | 'ariahidden' | 'visible';
 
 function normalizedCustomClasses(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((className): className is string => (
-      typeof className === 'string' && customStylingClasses.includes(className)
+      typeof className === 'string' && (
+        blockSizeClasses.includes(className as typeof blockSizeClasses[number])
+        || customStylingClasses.includes(className)
+      )
     ))
     : [];
 }
@@ -91,18 +105,57 @@ function normalizedCustomClasses(value: unknown): string[] {
 function customStylingTarget(state: EditorState): CustomStylingTarget | null {
   if (state.selection instanceof NodeSelection) {
     return 'customClasses' in state.selection.node.attrs
-      ? { node: state.selection.node, from: state.selection.from }
+      ? { node: state.selection.node, from: state.selection.from, depth: null }
       : null;
   }
 
   for (let depth = state.selection.$from.depth; depth > 0; depth -= 1) {
     const node = state.selection.$from.node(depth);
     if ('customClasses' in node.attrs) {
-      return { node, from: state.selection.$from.before(depth) };
+      return { node, from: state.selection.$from.before(depth), depth };
     }
   }
   return null;
 }
+
+function visibilityTarget(state: EditorState): VisibilityTarget | null {
+  const nodeTarget = customStylingTarget(state);
+  if (
+    nodeTarget
+    && state.selection instanceof NodeSelection
+  ) {
+    return { kind: 'node', ...nodeTarget };
+  }
+
+  if (state.selection instanceof TextSelection && !state.selection.empty) {
+    const visibilityMark = state.schema.marks.visibility;
+    const marks = state.selection.$from.marksAcross(state.selection.$to)
+      ?? state.selection.$from.marks();
+    const visibilityMarkInstance = visibilityMark
+      ? marks.find((candidate) => candidate.type === visibilityMark)
+      : undefined;
+    const mark = linkMarkAtSelection(state)
+      ?? marks.find((candidate) => ['strong', 'em', 'code'].includes(candidate.type.name));
+    return {
+      kind: 'text',
+      from: state.selection.from,
+      to: state.selection.to,
+      mark,
+      state: visibilityMarkInstance?.attrs.state === 'hidden'
+        || visibilityMarkInstance?.attrs.state === 'visuallyhidden'
+        || visibilityMarkInstance?.attrs.state === 'ariahidden'
+        ? visibilityMarkInstance.attrs.state
+        : mark?.attrs.visibilityState === 'hidden'
+          || mark?.attrs.visibilityState === 'visuallyhidden'
+          || mark?.attrs.visibilityState === 'ariahidden'
+          ? mark.attrs.visibilityState
+        : 'visible',
+    };
+  }
+
+  return null;
+}
+
 const switcherMaximums = [2, 3, 4, 5, 6, 7];
 const switcherThresholds = [20, 25, 30, 35, 40];
 const measureWidths: Record<Measure, number> = {
@@ -524,7 +577,20 @@ function dispatchStructuralEdit(
   editor: EditorView,
   transaction: EditorState['tr'],
   selectionTarget?: Pick<MeasureTarget, 'node' | 'from'>,
+  preserveSelection = false,
 ) {
+  if (preserveSelection) {
+    const selection = editor.state.selection;
+    transaction.setSelection(selection instanceof TextSelection
+      ? TextSelection.create(transaction.doc, selection.anchor, selection.head)
+      : selection instanceof NodeSelection
+      && selectionTarget
+      ? NodeSelection.create(transaction.doc, selectionTarget.from)
+      : selection.map(transaction.doc, transaction.mapping));
+    editor.dispatch(transaction);
+    editor.focus();
+    return;
+  }
   const target = selectionTarget ?? selectedLayoutTarget(editor.state);
   if (target) {
     const mappedPosition = transaction.mapping.map(target.from);
@@ -544,38 +610,30 @@ function canHaveId(node: NodeSelection['node']) {
   return Object.prototype.hasOwnProperty.call(node.attrs, 'id');
 }
 
-function descriptionParent(selection: NodeSelection) {
+function labelParent(selection: NodeSelection) {
   if (!canHaveId(selection.node)) {
     return null;
   }
 
-  let fallback: {
-    node: typeof selection.$from.parent;
-    position: number;
-  } | null = null;
   for (let depth = selection.$from.depth; depth > 0; depth -= 1) {
     const node = selection.$from.node(depth);
-    if (node.type.name !== 'base_block') {
+    if (
+      node.type.name !== 'base_block'
+      || ['div', 'header', 'footer'].includes(node.attrs.tag)
+    ) {
       continue;
     }
 
-    const parent = {
+    return {
       node,
       position: selection.$from.before(depth),
     };
-    if (node.attrs.tag === 'header') {
-      continue;
-    }
-    fallback ??= parent;
-    if (node.attrs.tag !== 'div') {
-      return parent;
-    }
   }
 
-  return fallback;
+  return null;
 }
 
-function descriptionId(editor: EditorView, selection: NodeSelection) {
+function labelId(editor: EditorView, selection: NodeSelection) {
   const usedIds = new Set<string>();
   editor.state.doc.descendants((node, position) => {
     if (position !== selection.from && typeof node.attrs.id === 'string') {
@@ -586,16 +644,166 @@ function descriptionId(editor: EditorView, selection: NodeSelection) {
   return uniqueNodeId(selection.node, usedIds, 'aria-');
 }
 
-function setAriaDescription(editor: EditorView, selection: NodeSelection) {
-  const parent = descriptionParent(selection);
+function nodeWithId(document: ProseMirrorNode, id: string) {
+  let match: ProseMirrorNode | null = null;
+  document.descendants((node) => {
+    if (node.attrs.id === id) {
+      match = node;
+      return false;
+    }
+    return !match;
+  });
+  return match;
+}
+
+function copyIdAndText(editor: EditorView, selection: NodeSelection) {
+  const ariaLabelledBy = typeof selection.node.attrs.ariaLabelledBy === 'string'
+    ? selection.node.attrs.ariaLabelledBy
+    : null;
+  const labelNode = ariaLabelledBy
+    ? nodeWithId(editor.state.doc, ariaLabelledBy)
+    : null;
+  const textNode = labelNode ?? selection.node;
+  const text = idTextFromNode(textNode);
+  const usedIds = new Set<string>();
+  editor.state.doc.descendants((node, position) => {
+    if (position !== selection.from && typeof node.attrs.id === 'string') {
+      usedIds.add(node.attrs.id);
+    }
+  });
+  const id = typeof selection.node.attrs.id === 'string' && selection.node.attrs.id
+    ? selection.node.attrs.id
+    : uniqueNodeId(textNode, usedIds);
+  const transaction = editor.state.tr.setNodeMarkup(selection.from, undefined, {
+    ...selection.node.attrs,
+    id,
+  }).setMeta(copiedIdPluginKey, [id, text]);
+  dispatchStructuralEdit(editor, transaction, selection, true);
+}
+
+function linkMarkAtSelection(state: EditorState): Mark | null {
+  if (!(state.selection instanceof TextSelection)) {
+    return null;
+  }
+  const link = state.schema.marks.link;
+  if (!link) {
+    return null;
+  }
+  const marks = state.selection.empty
+    ? state.selection.$from.marks()
+    : state.selection.$from.marksAcross(state.selection.$to)
+      ?? state.selection.$from.marks();
+  const selectionMark = link.isInSet(marks);
+  if (selectionMark || state.selection.empty) {
+    return selectionMark ?? null;
+  }
+  let linkMark: Mark | null = null;
+  state.doc.nodesBetween(state.selection.from, state.selection.to, (node) => {
+    linkMark ??= link.isInSet(node.marks) ?? null;
+    return linkMark === null;
+  });
+  return linkMark;
+}
+
+function linkRange(state: EditorState) {
+  if (!(state.selection instanceof TextSelection)) {
+    return null;
+  }
+  if (!state.selection.empty) {
+    return { from: state.selection.from, to: state.selection.to };
+  }
+  const mark = linkMarkAtSelection(state);
+  if (!mark) {
+    return null;
+  }
+  const { $from } = state.selection;
+  let start = $from.parentOffset;
+  let end = start;
+  while (start > 0) {
+    const child = $from.parent.childBefore(start);
+    if (!child.node || !mark.type.isInSet(child.node.marks)) {
+      break;
+    }
+    start -= child.node.nodeSize;
+  }
+  while (end < $from.parent.content.size) {
+    const child = $from.parent.childAfter(end);
+    if (!child.node || !mark.type.isInSet(child.node.marks)) {
+      break;
+    }
+    end += child.node.nodeSize;
+  }
+  return { from: $from.start() + start, to: $from.start() + end };
+}
+
+function openLinkModal(editor: EditorView) {
+  const heldId = copiedIdPluginKey.getState(editor.state);
+  const existingLink = linkMarkAtSelection(editor.state);
+  openModalPopup(editor, {
+    id: 'link',
+    className: 'prosemirror-link-modal',
+    title: existingLink ? 'Edit link' : 'Add link',
+    render: ({ close, view }) => {
+      const form = document.createElement('form');
+      form.className = 'stack space-s-1';
+      const href = document.createElement('input');
+      href.type = 'text';
+      href.inputMode = 'url';
+      href.required = true;
+      href.value = existingLink?.attrs.href ?? (heldId ? `#${heldId[0]}` : '');
+      href.id = 'prosemirror-link-href';
+      const hrefLabel = document.createElement('label');
+      hrefLabel.htmlFor = href.id;
+      hrefLabel.textContent = 'URL';
+      const hrefField = document.createElement('div');
+      hrefField.className = 'stack space-s-2';
+      hrefField.append(hrefLabel, href);
+      const title = document.createElement('input');
+      title.type = 'text';
+      title.value = existingLink?.attrs.title ?? heldId?.[1] ?? '';
+      title.id = 'prosemirror-link-title';
+      const titleLabel = document.createElement('label');
+      titleLabel.htmlFor = title.id;
+      titleLabel.textContent = 'Title';
+      const titleField = document.createElement('div');
+      titleField.className = 'stack space-s-2';
+      titleField.append(titleLabel, title);
+      const submit = document.createElement('button');
+      submit.type = 'submit';
+      submit.textContent = existingLink ? 'Save link' : 'Add link';
+      form.append(hrefField, titleField, submit);
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const link = view.state.schema.marks.link;
+        const range = linkRange(view.state);
+        if (!link || !range) {
+          return;
+        }
+        view.dispatch(view.state.tr
+          .removeMark(range.from, range.to, link)
+          .addMark(
+          range.from,
+          range.to,
+          link.create({ href: href.value, title: title.value || null }),
+          ));
+        close();
+        view.focus();
+      });
+      return form;
+    },
+  });
+}
+
+function setAriaLabel(editor: EditorView, selection: NodeSelection) {
+  const parent = labelParent(selection);
   if (!parent) {
     return false;
   }
 
-  const id = descriptionId(editor, selection);
+  const id = labelId(editor, selection);
   let transaction = editor.state.tr;
   parent.node.descendants((node, position) => {
-    if (node.attrs.id === parent.node.attrs.ariaDescribedBy) {
+    if (node.attrs.id === parent.node.attrs.ariaLabelledBy) {
       transaction = transaction.setNodeMarkup(parent.position + position + 1, undefined, {
         ...node.attrs,
         id: null,
@@ -605,7 +813,7 @@ function setAriaDescription(editor: EditorView, selection: NodeSelection) {
   transaction = transaction
     .setNodeMarkup(parent.position, undefined, {
       ...parent.node.attrs,
-      ariaDescribedBy: id,
+      ariaLabelledBy: id,
     })
     .setNodeMarkup(selection.from, undefined, {
       ...selection.node.attrs,
@@ -695,16 +903,28 @@ function nodeTag(node: NodeSelection['node']) {
   return node.type.name;
 }
 
+function nodeVisibilityState(node: NodeSelection['node']) {
+  if (node.attrs.hidden === true) {
+    return 'hidden';
+  }
+  return node.attrs.visuallyHidden === true
+    ? 'visually hidden'
+    : node.attrs.ariaHidden === true
+      ? 'ARIA hidden'
+      : 'visible';
+}
+
 function nodeInspection(node: NodeSelection['node']) {
   const details = [
     `Tag: ${nodeTag(node)}`,
+    `Visibility: ${nodeVisibilityState(node)}`,
   ];
   if (node.attrs.id) {
     details.push(`id: ${node.attrs.id}`);
   }
   if (node.type.name !== 'base_block') {
-    if (node.attrs.ariaDescribedBy) {
-      details.push(`aria-describedby: ${node.attrs.ariaDescribedBy}`);
+    if (node.attrs.ariaLabelledBy) {
+      details.push(`aria-labelledby: ${node.attrs.ariaLabelledBy}`);
     }
     const components = [
       ...(node.attrs.box ? ['Box'] : []),
@@ -735,8 +955,8 @@ function nodeInspection(node: NodeSelection['node']) {
   }
 
   const layouts = node.attrs.layouts as LayoutOption[];
-  if (node.attrs.ariaDescribedBy) {
-    details.push(`aria-describedby: ${node.attrs.ariaDescribedBy}`);
+  if (node.attrs.ariaLabelledBy) {
+    details.push(`aria-labelledby: ${node.attrs.ariaLabelledBy}`);
   }
   details.push(
     `Components: ${
@@ -885,6 +1105,7 @@ function migrateDocument(value: unknown): unknown {
     type?: unknown;
     attrs?: Record<string, unknown>;
     content?: unknown[];
+    marks?: Array<{ type?: unknown; attrs?: Record<string, unknown> }>;
   };
   const isBaseBlock = node.type === 'base_block' || node.type === 'base_box';
   const isFigure = node.type === 'figure';
@@ -895,7 +1116,10 @@ function migrateDocument(value: unknown): unknown {
   const isCentered = isLayoutContainer
     ? Array.isArray(node.attrs?.layouts) && node.attrs.layouts.includes('center')
     : node.attrs?.center === true;
-  const { centerMeasure: legacyCenterMeasure, ...currentAttrs } = node.attrs ?? {};
+  const {
+    centerMeasure: legacyCenterMeasure,
+    ...currentAttrs
+  } = node.attrs ?? {};
   const legacyMeasureEnabled = isCentered && node.attrs?.centerIntrinsic === false;
   const measure = currentAttrs.measure ?? (
     legacyMeasureEnabled ? legacyCenterMeasure ?? defaultMeasure : null
@@ -936,11 +1160,36 @@ function migrateDocument(value: unknown): unknown {
         : {}),
     }
     : undefined;
+  const visibilityMark = node.marks?.find((mark) => mark.type === 'visibility');
+  const visibilityState = visibilityMark?.attrs?.state;
+  const inlineMarkIndex = node.marks?.findIndex((mark) => (
+    ['link', 'strong', 'em', 'code'].includes(mark.type as string)
+  )) ?? -1;
+  const marks = Array.isArray(node.marks)
+    && ['hidden', 'visuallyhidden', 'ariahidden'].includes(visibilityState as string)
+    && inlineMarkIndex >= 0
+    ? node.marks
+      .flatMap((mark, index) => {
+        if (mark === visibilityMark) {
+          return [];
+        }
+        return index === inlineMarkIndex
+          ? [{
+          ...mark,
+          attrs: {
+            ...mark.attrs,
+            visibilityState,
+          },
+        }]
+          : [mark];
+      })
+    : node.marks;
 
   return {
     ...node,
     ...(node.type === 'base_box' ? { type: 'base_block' } : {}),
     ...(attrs ? { attrs } : {}),
+    ...(marks ? { marks } : {}),
     ...(Array.isArray(node.content)
       ? { content: node.content.map(migrateDocument) }
       : {}),
@@ -952,7 +1201,7 @@ export function everyLayoutDocumentFromJSON(
   schema: Schema = everyLayoutSchema,
 ) {
   if (value instanceof ProseMirrorNode) {
-    return value;
+    return schema.nodeFromJSON(migrateDocument(value.toJSON()));
   }
   if (value !== undefined) {
     return schema.nodeFromJSON(migrateDocument(value));
@@ -1019,9 +1268,9 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
     const hasLayout = (layout: LayoutOption) => Boolean(
       layoutTarget?.allowedLayouts.includes(layout) && blockLayouts?.includes(layout),
     );
-    const descriptionEnabled = (currentState: EditorState) => {
+    const labelEnabled = (currentState: EditorState) => {
       const selection = selectedNode(currentState);
-      return Boolean(selection && canHaveId(selection.node) && descriptionParent(selection));
+      return Boolean(selection && canHaveId(selection.node) && labelParent(selection));
     };
     const coverMainEnabled = (currentState: EditorState) => {
       const selection = selectedNode(currentState);
@@ -1474,12 +1723,12 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
         }, 'cycleframeratios', frameRatioCycleLabel);
       })()
       : null;
-    const descriptionAction = menuItemWithGeneratedIcon({
-      label: 'Set as description',
-      enable: descriptionEnabled,
+    const labelAction = menuItemWithGeneratedIcon({
+      label: 'Set semantic parent aria-labelledby to selection ID',
+      enable: labelEnabled,
       run: () => {
         const selection = selectedNode(editor.state);
-        if (selection && descriptionEnabled(editor.state)) setAriaDescription(editor, selection);
+        if (selection && labelEnabled(editor.state)) setAriaLabel(editor, selection);
       },
     }, 'setarialabeledby');
     const wrapInBlockAction = menuItemWithGeneratedIcon({
@@ -1506,19 +1755,20 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
       : null;
     const selectedCustomClasses = normalizedCustomClasses(
       customStylingTarget(state)?.node.attrs.customClasses,
-    );
+    ).filter((className) => customStylingClasses.includes(className));
     const customStylingControl = new Dropdown([
       new MenuItem({
         label: 'Remove custom classes',
         enable: (currentState) => normalizedCustomClasses(
           customStylingTarget(currentState)?.node.attrs.customClasses,
-        ).length > 0,
+        ).some((className) => customStylingClasses.includes(className)),
         run: () => {
           const target = customStylingTarget(editor.state);
           if (!target) return;
           dispatchStructuralEdit(editor, editor.state.tr.setNodeMarkup(target.from, undefined, {
             ...target.node.attrs,
-            customClasses: [],
+            customClasses: normalizedCustomClasses(target.node.attrs.customClasses)
+              .filter((className) => !customStylingClasses.includes(className)),
           }));
         },
       }),
@@ -1543,6 +1793,120 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
         ? `Classes: ${selectedCustomClasses.join(', ')}`
         : 'Classes',
     });
+    const currentVisibilityTarget = visibilityTarget(state);
+    const visibilityState = currentVisibilityTarget?.kind === 'text'
+      ? currentVisibilityTarget.state
+      : currentVisibilityTarget?.node.attrs.hidden === true
+        ? 'hidden'
+        : currentVisibilityTarget?.node.attrs.visuallyHidden === true
+          ? 'visuallyhidden'
+          : currentVisibilityTarget?.node.attrs.ariaHidden === true
+            ? 'ariahidden'
+            : 'visible';
+    const nextVisibility = visibilityState === 'visible'
+      ? 'hidden'
+      : visibilityState === 'hidden'
+        ? 'visuallyhidden'
+        : visibilityState === 'visuallyhidden'
+          ? 'ariahidden'
+          : 'visible';
+    const visibilityAction = menuItemWithRequiredGeneratedIcon({
+      label: nextVisibility === 'hidden'
+        ? 'Hide'
+        : nextVisibility === 'visuallyhidden'
+          ? 'Visually hide'
+          : nextVisibility === 'ariahidden'
+            ? 'ARIA hide'
+            : 'Show',
+      enable: (currentState) => visibilityTarget(currentState) !== null,
+      run: () => {
+        const target = visibilityTarget(editor.state);
+        if (!target) return;
+        if (target.kind === 'text') {
+          const visibilityMark = editor.state.schema.marks.visibility;
+          if (!visibilityMark) return;
+          let transaction = editor.state.tr.removeMark(target.from, target.to, visibilityMark);
+          if (target.mark) {
+            transaction = transaction
+              .removeMark(target.from, target.to, target.mark.type)
+              .addMark(target.from, target.to, target.mark.type.create({
+                ...target.mark.attrs,
+                visibilityState: nextVisibility === 'visible' ? null : nextVisibility,
+              }));
+          } else if (nextVisibility !== 'visible') {
+            transaction = transaction.addMark(
+              target.from,
+              target.to,
+              visibilityMark.create({ state: nextVisibility }),
+            );
+          }
+          dispatchStructuralEdit(editor, transaction, undefined, true);
+          return;
+        }
+        dispatchStructuralEdit(editor, editor.state.tr.setNodeMarkup(target.from, undefined, {
+          ...target.node.attrs,
+          hidden: nextVisibility === 'hidden',
+          visuallyHidden: nextVisibility === 'visuallyhidden',
+          ariaHidden: nextVisibility === 'ariahidden',
+        }), target, true);
+      },
+    }, nextVisibility === 'ariahidden' ? 'setarialabeledby' : nextVisibility as IconName);
+    const copyIdAction = menuItemWithRequiredGeneratedIcon({
+      label: 'Set ID and hold label text',
+      title: 'Set ID and hold label text',
+      enable: (currentState) => {
+        const selection = selectedNode(currentState);
+        return Boolean(selection && canHaveId(selection.node));
+      },
+      run: () => {
+        const selection = selectedNode(editor.state);
+        if (selection && canHaveId(selection.node)) {
+          copyIdAndText(editor, selection);
+        }
+      },
+    }, 'setcopyid');
+    const addLinkAction = menuItemWithRequiredGeneratedIcon({
+      label: linkMarkAtSelection(state) ? 'Edit link' : 'Add link',
+      title: linkMarkAtSelection(state) ? 'Edit link' : 'Add link',
+      enable: (currentState) => linkRange(currentState) !== null,
+      run: () => openLinkModal(editor),
+    }, 'link');
+    const blockSizeModifier = (() => {
+      const target = customStylingTarget(state);
+      const currentClass = target
+        ? normalizedCustomClasses(target.node.attrs.customClasses).find(
+          (className) => blockSizeClasses.includes(className as typeof blockSizeClasses[number]),
+        )
+        : undefined;
+      const currentIndex = currentClass ? blockSizeClasses.indexOf(
+        currentClass as typeof blockSizeClasses[number],
+      ) : -1;
+      const nextClass = blockSizeClasses[currentIndex + 1];
+      const nextHeight = nextClass?.match(/\d+/)?.[0];
+      const label = nextHeight ? `Set height to ${nextHeight}vb` : 'Remove height';
+      return menuItemWithRequiredGeneratedIcon({
+        label,
+        title: label,
+        enable: (currentState) => customStylingTarget(currentState) !== null,
+        run: () => {
+          const currentTarget = customStylingTarget(editor.state);
+          if (!currentTarget) return;
+          const customClasses = normalizedCustomClasses(currentTarget.node.attrs.customClasses)
+            .filter(
+              (className) => !blockSizeClasses.includes(
+                className as typeof blockSizeClasses[number],
+              ),
+            );
+          if (nextClass) {
+            customClasses.push(nextClass);
+          }
+          dispatchStructuralEdit(editor, editor.state.tr.setNodeMarkup(currentTarget.from, undefined, {
+            ...currentTarget.node.attrs,
+            customClasses,
+          }), undefined, true);
+        },
+      }, 'blocksizevb');
+    })();
     const blockToolbarGroups: MenuElement[][] = [
       [wrapInBlockAction, boxAction, ...layoutControls],
       [centerAction],
@@ -1552,6 +1916,8 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
       ...(sidebarOrientationControl ? [[sidebarOrientationControl]] : []),
       ...(frameRatioControl ? [[frameRatioControl]] : []),
       ...(coverMainAction ? [[coverMainAction]] : []),
+      [copyIdAction],
+      [blockSizeModifier],
       ...(measureModifiers.length > 0 ? [measureModifiers] : []),
       ...(boxModifierControls.length > 0 ? [boxModifierControls] : []),
       ...(componentConfigurationControls.length > 0 ? [componentConfigurationControls] : []),
@@ -1559,7 +1925,8 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
       ...(clusterModifierControls.length > 0 ? [clusterModifierControls] : []),
       ...(genericSpacingModifierControls.length > 0 ? [genericSpacingModifierControls] : []),
     ];
-    const exampleToolbarGroups = buildExampleToolbarGroupsWithIcons(schema);
+    const exampleToolbarGroups = buildExampleToolbarGroupsWithIcons(schema, addLinkAction);
+    const [inlineTextControls, typeControls, ...textBlockControls] = exampleToolbarGroups.text;
     const utilityActions: MenuElement[] = [
       showBlockOutlines
         ? menuItemWithGeneratedIcon({
@@ -1607,8 +1974,12 @@ export function mountEveryLayoutEditor(options: EveryLayoutEditorOptions): Every
         utilityActions,
       ],
       [
-        ...exampleToolbarGroups.text,
-        [descriptionAction, customStylingControl],
+        ...(inlineTextControls ? [inlineTextControls] : []),
+        typeControls
+          ? [...typeControls, customStylingControl]
+          : [customStylingControl],
+        ...textBlockControls,
+        [labelAction, visibilityAction],
       ],
       blockToolbarGroups,
       ...(modifierToolbarGroups.length > 0 ? [modifierToolbarGroups] : []),

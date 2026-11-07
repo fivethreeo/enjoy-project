@@ -19,10 +19,12 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.urls import path
 from django.views.generic import TemplateView
+from pages.views import page
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', TemplateView.as_view(template_name='index.html'), name='index'),
+    path('<slug:slug>/', page, name='page'),
 ]
 
 if settings.DEBUG:

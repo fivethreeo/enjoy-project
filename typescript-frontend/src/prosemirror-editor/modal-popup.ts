@@ -24,6 +24,8 @@ type ModalPopupLabel = {
 export type ModalPopupSpec = ModalPopupLabel & {
   /** Stable identifier used to connect the dialog to its visible title. */
   id: string;
+  /** Optional dialog class for a popup-specific layout. */
+  className?: string;
   render: (context: ModalPopupRenderContext) => HTMLElement;
 };
 
@@ -105,6 +107,9 @@ export function modalPopupPlugin(shell: HTMLElement): Plugin<ModalPopupState> {
 
         const dialog = document.createElement('section');
         dialog.className = 'prosemirror-modal-popup imposter contain';
+        if (spec.className) {
+          dialog.classList.add(spec.className);
+        }
         dialog.id = id;
         dialog.setAttribute('role', 'dialog');
         dialog.setAttribute('aria-modal', 'true');

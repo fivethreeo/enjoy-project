@@ -1,5 +1,7 @@
 from django.db import models
 
+from .model_field_cache import clear_model_field_cache
+
 
 class Page(models.Model):
     title = models.CharField(max_length=255)
@@ -19,3 +21,11 @@ class Page(models.Model):
 
     def __str__(self):
         return self.title
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        clear_model_field_cache(self, 'content')
+
+    def delete(self, *args, **kwargs):
+        clear_model_field_cache(self, 'content')
+        return super().delete(*args, **kwargs)

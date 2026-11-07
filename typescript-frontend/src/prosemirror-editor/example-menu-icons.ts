@@ -4,6 +4,7 @@ import { joinBackward, joinUp } from 'prosemirror-commands';
 import { NodeSelection, TextSelection, type EditorState } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 import {
+  Dropdown,
   MenuItem,
   joinUpItem,
   liftItem,
@@ -265,9 +266,22 @@ export function selectParentNodeItemWithGeneratedIcon() {
   return replaceIcon(selectParentNodeItem, 'selectParent');
 }
 
-export function buildExampleToolbarGroupsWithIcons(schema: Schema) {
+export function buildExampleToolbarGroupsWithIcons(schema: Schema, linkItem?: MenuElement) {
   const items = buildMenuItems(schema);
   const mappedItems = iconMappings(items);
+  const typeMenuItems = [
+    [items.makeParagraph, 'Paragraph'],
+    [items.makeHead1, 'Heading 1'],
+    [items.makeHead2, 'Heading 2'],
+    [items.makeHead3, 'Heading 3'],
+    [items.makeHead4, 'Heading 4'],
+  ] as const;
+  const typeMenu = new Dropdown(
+    typeMenuItems.flatMap(([item, label]) => item
+      ? [new MenuItem({ ...item.spec, label, title: `Change to ${label.toLowerCase()}` })]
+      : []),
+    { label: 'Type...' },
+  );
   const nativeBlockActions = items.blockMenu
     .flat()
     .filter(isNativeBlockAction)
@@ -290,8 +304,21 @@ export function buildExampleToolbarGroupsWithIcons(schema: Schema) {
     common: decorateMenuGroups([[undoItem, redoItem]], mappedItems),
     nativeBlockActions: decorateMenuGroups([nativeBlockActions], mappedItems),
     text: decorateMenuGroups([
-      ...items.inlineMenu,
-      [items.insertMenu, items.typeMenu],
+      ...items.inlineMenu.map((group) => {
+        if (!linkItem) {
+          return group;
+        }
+        const itemsWithoutLink = group.filter((element) => element !== items.toggleLink);
+        const italicIndex = items.toggleEm
+          ? itemsWithoutLink.indexOf(items.toggleEm)
+          : -1;
+        return [
+          ...itemsWithoutLink.slice(0, italicIndex + 1),
+          linkItem,
+          ...itemsWithoutLink.slice(italicIndex + 1),
+        ];
+      }),
+      [typeMenu],
       ...textBlockMenu,
     ], mappedItems),
   };
