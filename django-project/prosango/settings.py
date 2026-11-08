@@ -19,9 +19,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-(dh=hy0(zcltj*as5p6fl)mvq+l+(d!6plm6_f9t6q&a#ymkjp'
-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
@@ -143,11 +140,8 @@ MAILERS = {
 }
 
 
-# Local overrides (12-factor config lives in local_settings.py)
-try:
-    from .local_settings import *  # noqa: F401,F403
-except ImportError:
-    pass
+# Runtime configuration must load successfully, including in production.
+from .local_settings import *  # noqa: F401,F403
 
 if not DEBUG or CORS_ALLOWED_ORIGINS:
     INSTALLED_APPS.insert(-1, 'corsheaders')

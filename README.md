@@ -61,3 +61,45 @@ python run.py parallel RSBUILD_CORS_ORIGIN=http://localhost:8000
 Set both variables when both directions require CORS. In parallel mode, use
 these variables instead of passing shared `--host`, `--port`, or `--addrport`
 arguments.
+
+## Runtime configuration and production
+
+Copy `django-project/.env.example` to `django-project/.env` for local settings.
+Alternatively set `DJANGO_ENV_FILE` to a protected file outside the checkout.
+Existing process environment variables take precedence over `.env`; values are
+not interpolated, so credentials containing `${...}` are preserved literally.
+Do not commit `.env` files or production credentials.
+
+Development keeps SQLite unless a database name is configured. Production
+(`DJANGO_DEBUG=false`) requires `DJANGO_SECRET_KEY` and
+`DJANGO_DATABASE_NAME`. A configured database defaults to PostgreSQL; set
+`DJANGO_DATABASE_USER`, `DJANGO_DATABASE_PASSWORD`, `DJANGO_DATABASE_HOST`,
+and `DJANGO_DATABASE_PORT`. Legacy `DATABASE_*` names remain accepted, with
+`DJANGO_DATABASE_*` taking precedence.
+
+Set `DJANGO_STATIC_ROOT` and `DJANGO_MEDIA_ROOT` to persistent paths outside
+the code checkout. Production upload permissions default to `0640` for files
+and `2750` for directories, suitable for an app-owned directory shared with
+Nginx through its group. Enable `DJANGO_TRUST_PROXY_HEADERS` only behind a
+trusted proxy; secure-cookie settings can be enabled independently for HTTPS.
+
+Celery uses `prosango` as its app and autodiscovers `tasks.py` in installed
+Django apps. Configure `CELERY_BROKER_URL` with your RabbitMQ user/vhost and,
+if needed, `CELERY_RESULT_BACKEND`:
+
+```sh
+cd django-project
+DJANGO_ENV_FILE=/path/to/runtime.env .venv/bin/celery -A prosango worker --loglevel=INFO
+DJANGO_ENV_FILE=/path/to/runtime.env .venv/bin/celery -A prosango beat --loglevel=INFO \
+  --schedule=/path/to/persistent/celerybeat-schedule
+```
+
+Run only one Beat instance per application schedule. For production, use
+Gunicorn (`prosango.wsgi:application`) and systemd rather than development
+servers.
+
+Build the frontend on your workstation before deployment. The matching
+`ansible-home-cluster/deploy-app/deploy-code.yml` uploads this checkout's Django
+source and prebuilt frontend output, writes Vault-backed settings, runs
+PostgreSQL migrations and `collectstatic`, and manages Gunicorn/Celery.
+It does not run the frontend build on the deployment host.

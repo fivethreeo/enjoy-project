@@ -23,7 +23,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='page',
             name='slug',
-            field=models.SlugField(max_length=255, null=True),
+            field=models.SlugField(db_index=False, max_length=255, null=True),
         ),
         migrations.RunPython(
             populate_page_titles_and_slugs,
