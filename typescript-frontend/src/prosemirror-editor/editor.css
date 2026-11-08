@@ -4,11 +4,6 @@
   max-inline-size: none;
   min-inline-size: 0;
 }
-
-.ProseMirror p {
-  font-size: calc(var(--f0) * 1.25);
-}
-
 .prosemirror-editor-shell {
   --editor-controls-top: 0px;
   --editor-toolbar-height: 0px;

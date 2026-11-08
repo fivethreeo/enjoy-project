@@ -53,12 +53,17 @@ function save(editor: EditorView, element: HTMLTextAreaElement) {
 
 /** Mounts the default schema, plugins, and menu next to a Django textarea. */
 export function setupEditor(element: HTMLTextAreaElement): EditorView {
-  const host = document.createElement('section');
+  const outer = document.createElement('div');
+  outer.style.fontSize = 'medium';
+  outer.style.inlineSize = '100%';
+  outer.style.minInlineSize = '0';
+  const host = document.createElement('div');
   const root = host.attachShadow({ mode: 'open' });
-  const shell = document.createElement('section');
+  const shell = document.createElement('div');
   const styleSheet = installEditorStyleSheet(root);
   root.append(shell);
-  element.insertAdjacentElement('afterend', host);
+  outer.append(host);
+  element.insertAdjacentElement('afterend', outer);
   element.hidden = true;
   const editor = mountEveryLayoutEditor({
     mount: shell,

@@ -100,6 +100,83 @@ class PagePublicationTests(TestCase):
 
 
 @override_settings(MEDIA_ROOT='test-media')
+class PageMediaReferenceTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user('author', password='password')
+        self.image = Image.objects.create(
+            owner=self.user,
+            name='Current photo',
+            mime_type='image/png',
+            file=SimpleUploadedFile('current.png', b'image', content_type='image/png'),
+        )
+        self.video = File.objects.create(
+            owner=self.user,
+            name='Current movie',
+            mime_type='video/mp4',
+            file=SimpleUploadedFile('current.mp4', b'video', content_type='video/mp4'),
+        )
+
+    def document(self):
+        return {
+            'version': 1,
+            'document': {
+                'type': 'doc',
+                'content': [
+                    {'type': 'image_media', 'attrs': {
+                        'filerId': self.image.pk,
+                        'src': '/stale-image.png',
+                        'name': 'Old image name',
+                        'mimeType': 'image/jpeg',
+                    }},
+                    {'type': 'video_media', 'attrs': {
+                        'filerId': self.video.pk,
+                        'src': '/stale-video.mp4',
+                        'name': 'Old video name',
+                        'mimeType': 'video/webm',
+                    }},
+                    {'type': 'paragraph', 'content': [{'type': 'text', 'text': 'Kept'}]},
+                ],
+            },
+        }
+
+    def test_save_refreshes_filer_media_urls_and_metadata(self):
+        page = Page.objects.create(
+            title='Media page',
+            slug='media-page',
+            author=self.user,
+            content=json.dumps(self.document()),
+        )
+        document = json.loads(page.content)['document']
+        image, video = document['content'][:2]
+        self.assertEqual(image['attrs']['src'], self.image.url)
+        self.assertEqual(image['attrs']['name'], self.image.name)
+        self.assertEqual(image['attrs']['mimeType'], self.image.mime_type)
+        self.assertEqual(video['attrs']['src'], self.video.url)
+        self.assertEqual(video['attrs']['name'], self.video.name)
+        self.assertEqual(video['attrs']['mimeType'], self.video.mime_type)
+
+    def test_save_removes_missing_filer_media_and_empty_figures(self):
+        document = self.document()
+        document['document']['content'] = [{
+            'type': 'figure',
+            'content': [document['document']['content'][0]],
+        }, document['document']['content'][2]]
+        page = Page.objects.create(
+            title='Stale media page',
+            slug='stale-media-page',
+            author=self.user,
+            content=json.dumps(document),
+        )
+        self.image.delete()
+        page.save()
+        content = json.loads(page.content)['document']['content']
+        self.assertEqual(content, [{
+            'type': 'paragraph',
+            'content': [{'type': 'text', 'text': 'Kept'}],
+        }])
+
+
+@override_settings(MEDIA_ROOT='test-media')
 class FilerMediaEndpointTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_superuser('editor', 'editor@example.test', 'password')

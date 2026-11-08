@@ -1,6 +1,7 @@
 from django.db import models
 
 from .model_field_cache import clear_model_field_cache
+from .media_references import reconcile_model_field_media
 
 
 class Page(models.Model):
@@ -23,6 +24,9 @@ class Page(models.Model):
         return self.title
 
     def save(self, *args, **kwargs):
+        media_changed = reconcile_model_field_media(self, 'content')
+        if media_changed and kwargs.get('update_fields') is not None:
+            kwargs['update_fields'] = {*kwargs['update_fields'], 'content'}
         super().save(*args, **kwargs)
         clear_model_field_cache(self, 'content')
 

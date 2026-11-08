@@ -3,126 +3,223 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Prosango</title>
+  <title>Prosango — Every Layout for Django</title>
   <link rel="icon" href="{% static 'favicon.ico' %}">
   <link rel="icon" type="image/png" href="{% static 'favicon.png' %}">
   {% rsbuild_entry 'index' %}
 </head>
 <body>
-  <div id="root" class="stack space-s3">
-    <main class="stack space-s3">
-      <section class="cover box box:raised box:invert padding-s3" aria-labelledby="hero-title">
-        <nav class="cluster cluster:between cluster:center gap-s0" aria-label="Main navigation">
-          <a href="/" aria-label="Prosango home">prosango.</a>
-          <div class="cluster cluster:center gap-s0">
-            <a href="#approach">Integration</a>
-            <a href="#principles">Layout system</a>
-            <a href="#contact">Contact</a>
-          </div>
-        </nav>
-        <p>Prosango / structured publishing</p>
-        <div class="stack space-s2" data-cover-main>
-          <h1 id="hero-title">A Django editing system built around ProseMirror and Every Layout.</h1>
-          <p>Write structured content in django-admin, manage images with django-filer, and publish interfaces from a shared set of layout primitives.</p>
-          <div class="cluster gap-s0">
-            <a class="with-icon" href="#approach"><svg class="icon" viewBox="0 0 10 10" width="0.75em" height="0.75em" stroke="currentColor" stroke-width="2">
-  <line x1="1" y1="1" x2="9" y2="9" />
-  <line x1="9" y1="1" x2="1" y2="9" />
-</svg>Explore the integration </a>
-            <a href="#contact">Discuss an integration</a>
-          </div>
+  <div class="docs-page">
+    <header class="docs-header stack space-s0">
+      <a class="docs-logo" href="/">
+        <span aria-hidden="true">prosango.</span>
+        <span class="vh">Prosango, homepage</span>
+      </a>
+      <button class="docs-nav-toggle" type="button" aria-expanded="false" aria-controls="docs-nav">
+        <svg class="docs-icon" focusable="false" viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M3,3 29,3 M3,16 29,16 M3,29 29,29"></path>
+        </svg>
+        Menu
+      </button>
+      <nav class="docs-nav" id="docs-nav" aria-labelledby="nav-label">
+        <div class="stack space-s0">
+          <span id="nav-label" hidden>Every Layout navigation</span>
+          <h2>Components</h2>
+          <ul class="stack space-s-2">
+            <li><a href="#stack">The Stack</a></li>
+            <li><a href="#box">The Box</a></li>
+            <li><a href="#center">The Center</a></li>
+            <li><a href="#cluster">The Cluster</a></li>
+            <li><a href="#sidebar">The Sidebar</a></li>
+            <li><a href="#switcher">The Switcher</a></li>
+            <li><a href="#cover">The Cover</a></li>
+            <li><a href="#grid">The Grid</a></li>
+            <li><a href="#frame">The Frame</a></li>
+            <li><a href="#reel">The Reel</a></li>
+            <li><a href="#imposter">The Imposter</a></li>
+          </ul>
+          <a class="docs-admin-link" href="/admin/">Open django-admin</a>
         </div>
-        <p>One editing experience, from Django admin to the published app.</p>
+      </nav>
+    </header>
+
+    <div class="docs-main">
+      <main class="docs-content stack space-s3">
+      <section class="cover box box:raised box:invert padding-s2" aria-labelledby="hero-title">
+        <p>Prosango / Every Layout reference</p>
+        <div class="stack space-s1" data-cover-main>
+          <h1 id="hero-title">A shared layout language for Django pages and their editor.</h1>
+          <p>These component examples are the same small primitives available when authors build structured pages in django-admin.</p>
+          <p><a href="/admin/">Create and edit a page in django-admin</a></p>
+        </div>
+        <p>Compose dependable interfaces instead of inventing a one-off layout for each page.</p>
       </section>
 
-      <section class="center stack space-s3" id="approach" aria-labelledby="approach-title">
-        <div class="with-sidebar with-sidebar:left sidebar-width-16 content-min-66 gap-s2">
-          <aside class="box box:raised stack padding-s0 space-s0">
-            <p>01 / integration</p>
-            <p>Bring structured editing into the Django tools your team already uses.</p>
-          </aside>
-          <div class="stack space-s2">
-            <h2 id="approach-title">A complete authoring workflow, without leaving django-admin.</h2>
-            <div class="switcher switcher:max5 gap-s-1">
-              <span class="box box:raised box:raised--aqua padding-s-1">Django</span>
-              <span class="box box:raised padding-s-1">ProseMirror</span>
-              <span class="box box:raised box:raised--sun padding-s-1">django-filer</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="grid grid-min-16 gap-s2">
-          <article class="box box:raised stack padding-s0 space-s0">
-            <p>01</p>
-            <h3>Django and django-admin</h3>
-            <p>Pages, publishing metadata, and content management stay inside the familiar Django admin workflow.</p>
-          </article>
-          <article class="box box:raised stack padding-s0 space-s0">
-            <p>02</p>
-            <h3>ProseMirror editing</h3>
-            <p>A full-screen editing surface turns stored page content into structured, editable documents.</p>
-          </article>
-          <article class="box box:raised stack padding-s0 space-s0">
-            <p>03</p>
-            <h3>django-filer media</h3>
-            <p>Attach, preview, and reuse managed images through django-filer directly from a Page.</p>
-          </article>
+      <section class="docs-component with-sidebar box padding-s-1 sidebar-width-16 content-min-66 gap-s2" id="stack" aria-labelledby="stack-title">
+        <aside class="docs-component__about stack space-s-1">
+          <p>01 / composition</p>
+          <h2 id="stack-title">The Stack</h2>
+          <p>Arranges children vertically and controls the space between them.</p>
+        </aside>
+        <div class="box box:raised stack space-s1 padding-s1">
+          <p>Heading</p>
+          <p>The Stack makes vertical rhythm an explicit part of the component.</p>
+          <a href="/admin/">A related action</a>
         </div>
       </section>
 
-      <section class="center stack space-s3" id="principles" aria-labelledby="principles-title">
-        <div class="with-sidebar with-sidebar:right sidebar-width-20 content-min-66 gap-s2">
-          <div class="stack space-s0">
-            <p>02 / shared layout system</p>
-            <h2 id="principles-title">The app and editor speak the same Every Layout language.</h2>
-          </div>
-          <div class="imposter-container frame">
-            <img src="{% static 'favicon.png' %}" alt="">
-            <p class="imposter box box:raised box:raised--sun padding-s-1">One<br>system</p>
-          </div>
-        </div>
-
-        <div class="reel" aria-label="Every Layout principles">
-          <article class="box box:raised stack padding-s0 space-s0">
-            <p>Primitives</p>
-            <h3>Compose instead of custom-build.</h3>
-            <p>Box, Stack, Grid, With sidebar, and Cover provide a small, configurable vocabulary for content.</p>
-          </article>
-          <article class="box box:raised box:invert stack padding-s0 space-s0">
-            <p>Consistency</p>
-            <h3>Editing mirrors the published app.</h3>
-            <p>The editor loads the same layout system, so authored components remain familiar in both contexts.</p>
-          </article>
-          <article class="box box:raised stack padding-s0 space-s0">
-            <p>Flexibility</p>
-            <h3>Keep structure configurable.</h3>
-            <p>Small layout contracts adapt to content while avoiding one-off templates and brittle page rules.</p>
-          </article>
-        </div>
-        <p class="instruction">Scroll horizontally to see more.</p>
-      </section>
-
-      <section class="center" id="contact" aria-labelledby="contact-title">
-        <div class="box box:raised stack padding-s3 space-s2">
-          <p>03 / integrate</p>
-          <div class="stack space-s0">
-            <h2 id="contact-title">Bring structured editing to your Django project.</h2>
-            <p>Talk to us about connecting ProseMirror, django-admin, django-filer, and Every Layout.</p>
-            <a class="with-icon" href="mailto:hello@prosango.com">hello@prosango.com <svg class="icon icon--arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8h11M9 4l4 4-4 4" fill="none" stroke="currentColor"/></svg></a>
-          </div>
-          <p>Structured content, from authoring to application.</p>
+      <section class="docs-component with-sidebar box padding-s-1 sidebar-width-16 content-min-66 gap-s2" id="box" aria-labelledby="box-title">
+        <aside class="docs-component__about stack space-s-1">
+          <p>02 / containment</p>
+          <h2 id="box-title">The Box</h2>
+          <p>Applies padding, borders, and optional inverted presentation without styling descendants.</p>
+        </aside>
+        <div class="box box:raised box:invert padding-s2">
+          <p>Contained content can carry its own layout without inheriting presentation rules.</p>
         </div>
       </section>
-    </main>
 
-    <footer class="box box:raised padding-s0">
-      <div class="center">
-        <div class="cluster cluster:between cluster:center gap-s0">
-          <a href="/" aria-label="Prosango home">prosango.</a>
-          <p>ProseMirror, django-admin, django-filer, and Every Layout.</p>
+      <section class="docs-component with-sidebar box padding-s-1 sidebar-width-16 content-min-66 gap-s2" id="center" aria-labelledby="center-title">
+        <aside class="docs-component__about stack space-s-1">
+          <p>03 / alignment</p>
+          <h2 id="center-title">The Center</h2>
+          <p>Centers a constrained measure, keeping long-form content readable on large screens.</p>
+        </aside>
+        <div class="box box:raised padding-s1">
+          <div class="center measure:sm">
+            <p>This centered measure remains comfortable to read while its surrounding component can grow freely.</p>
+          </div>
         </div>
-      </div>
-    </footer>
+      </section>
+
+      <section class="docs-component with-sidebar box padding-s-1 sidebar-width-16 content-min-66 gap-s2" id="cluster" aria-labelledby="cluster-title">
+        <aside class="docs-component__about stack space-s-1">
+          <p>04 / grouping</p>
+          <h2 id="cluster-title">The Cluster</h2>
+          <p>Groups inline items that wrap naturally while retaining a consistent gap.</p>
+        </aside>
+        <div class="box box:raised padding-s1">
+          <div class="cluster gap-s-1" data-item-count-demo data-min-items="3">
+            <span class="box box:raised--aqua padding-s-1">Django</span>
+            <span class="box box:raised--sun padding-s-1">ProseMirror</span>
+            <span class="box box:raised--aqua padding-s-1">django-filer</span>
+            <span class="box box:raised--sun padding-s-1">Every Layout</span>
+            <span class="box box:raised--aqua padding-s-1">Semantic HTML</span>
+            <span class="box box:raised--sun padding-s-1">Accessible by default</span>
+            <span class="box box:raised--aqua padding-s-1">Responsive</span>
+            <span class="box box:raised--sun padding-s-1">Composable</span>
+            <span class="box box:raised--aqua padding-s-1">Content-first</span>
+            <span class="box box:raised--sun padding-s-1">Reusable</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="docs-component with-sidebar box padding-s-1 sidebar-width-16 content-min-66 gap-s2" id="sidebar" aria-labelledby="sidebar-title">
+        <aside class="docs-component__about stack space-s-1">
+          <p>05 / priority</p>
+          <h2 id="sidebar-title">The Sidebar</h2>
+          <p>Places a compact, stable sidebar beside content that takes the remaining available space.</p>
+        </aside>
+        <div class="with-sidebar sidebar-width-12 content-min-50 gap-s1">
+          <aside class="box box:raised--sun padding-s1"><strong>Aside</strong></aside>
+          <div class="box box:raised padding-s1">The main content expands until the layout switches to a vertical stack.</div>
+        </div>
+      </section>
+
+      <section class="docs-component with-sidebar box padding-s-1 sidebar-width-16 content-min-66 gap-s2" id="switcher" aria-labelledby="switcher-title">
+        <aside class="docs-component__about stack space-s-1">
+          <p>06 / responsiveness</p>
+          <h2 id="switcher-title">The Switcher</h2>
+          <p>Switches between horizontal and vertical arrangements based on the space available to its children.</p>
+        </aside>
+        <div class="switcher switcher:max5 switcher-threshold-20 gap-s1" data-item-count-demo data-min-items="2">
+          <div class="box box:raised padding-s1">One</div>
+          <div class="box box:raised padding-s1">Two</div>
+          <div class="box box:raised padding-s1">Three</div>
+          <div class="box box:raised padding-s1">Four</div>
+          <div class="box box:raised padding-s1">Five</div>
+          <div class="box box:raised padding-s1">Six</div>
+          <div class="box box:raised padding-s1">Seven</div>
+          <div class="box box:raised padding-s1">Eight</div>
+        </div>
+      </section>
+
+      <section class="docs-component with-sidebar box padding-s-1 sidebar-width-16 content-min-66 gap-s2" id="cover" aria-labelledby="cover-title">
+        <aside class="docs-component__about stack space-s-1">
+          <p>07 / focal content</p>
+          <h2 id="cover-title">The Cover</h2>
+          <p>Centers its main child vertically while retaining content at the top and bottom.</p>
+        </aside>
+        <div class="cover box box:raised padding-s2 docs-cover-example">
+          <p>Context</p>
+          <h3 data-cover-main>Put the important message in the middle.</h3>
+          <p>Supporting detail</p>
+        </div>
+      </section>
+
+      <section class="docs-component with-sidebar box padding-s-1 sidebar-width-16 content-min-66 gap-s2" id="grid" aria-labelledby="grid-title">
+        <aside class="docs-component__about stack space-s-1">
+          <p>08 / collections</p>
+          <h2 id="grid-title">The Grid</h2>
+          <p>Creates responsive columns that share available space while respecting a minimum width.</p>
+        </aside>
+        <div class="grid grid-min-16 gap-s1" data-item-count-demo data-min-items="2">
+          <div class="box box:raised padding-s1">First item</div>
+          <div class="box box:raised padding-s1">Second item</div>
+          <div class="box box:raised padding-s1">Third item</div>
+          <div class="box box:raised padding-s1">Fourth item</div>
+          <div class="box box:raised padding-s1">Fifth item</div>
+          <div class="box box:raised padding-s1">Sixth item</div>
+          <div class="box box:raised padding-s1">Seventh item</div>
+          <div class="box box:raised padding-s1">Eighth item</div>
+        </div>
+      </section>
+
+      <section class="docs-component with-sidebar box padding-s-1 sidebar-width-16 content-min-66 gap-s2" id="frame" aria-labelledby="frame-title">
+        <aside class="docs-component__about stack space-s-1">
+          <p>09 / media</p>
+          <h2 id="frame-title">The Frame</h2>
+          <p>Maintains a predictable aspect ratio around images and other media.</p>
+        </aside>
+        <div class="frame box box:raised--aqua">
+          <div class="center">16:9 media frame</div>
+        </div>
+      </section>
+
+      <section class="docs-component with-sidebar box padding-s-1 sidebar-width-16 content-min-66 gap-s2" id="reel" aria-labelledby="reel-title">
+        <aside class="docs-component__about stack space-s-1">
+          <p>10 / overflow</p>
+          <h2 id="reel-title">The Reel</h2>
+          <p>Provides a horizontally scrollable row for related content that should not be squeezed into narrow cards.</p>
+        </aside>
+        <div class="reel gap-s1" aria-label="Reel example" data-item-count-demo data-min-items="4">
+          <div class="box box:raised padding-s1">First</div>
+          <div class="box box:raised padding-s1">Second</div>
+          <div class="box box:raised padding-s1">Third</div>
+          <div class="box box:raised padding-s1">Fourth</div>
+          <div class="box box:raised padding-s1">Fifth</div>
+          <div class="box box:raised padding-s1">Sixth</div>
+          <div class="box box:raised padding-s1">Seventh</div>
+          <div class="box box:raised padding-s1">Eighth</div>
+          <div class="box box:raised padding-s1">Ninth</div>
+          <div class="box box:raised padding-s1">Tenth</div>
+          <div class="box box:raised padding-s1">Eleventh</div>
+          <div class="box box:raised padding-s1">Twelfth</div>
+        </div>
+      </section>
+
+      <section class="docs-component with-sidebar box padding-s-1 sidebar-width-16 content-min-66 gap-s2" id="imposter" aria-labelledby="imposter-title">
+        <aside class="docs-component__about stack space-s-1">
+          <p>11 / overlay</p>
+          <h2 id="imposter-title">The Imposter</h2>
+          <p>Centers an overlay in its containing block, useful for notices, dialogs, and focused controls.</p>
+        </aside>
+        <div class="imposter-container docs-imposter-example box box:raised--aqua">
+          <p class="imposter box box:raised padding-s1">Centered overlay</p>
+        </div>
+      </section>
+      </main>
+    </div>
   </div>
 </body>
 </html>

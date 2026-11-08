@@ -1,5 +1,72 @@
 body {
+  margin: 0;
   background: #f3eee4;
+}
+
+.docs-page {
+  max-width: 100rem;
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(14rem, 20rem) minmax(0, 1fr);
+  gap: var(--s2);
+  font-size: var(--f1);
+}
+
+.docs-header {
+  align-self: start;
+  padding: var(--s1);
+  border: var(--border-thin) solid #d9cfbe;
+  border-radius: var(--box-radius, 0.5rem);
+  background: #fffdf7;
+}
+
+.docs-logo {
+  color: #294537;
+  font-size: var(--s2);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.docs-nav h2,
+.docs-component__about h2 {
+  margin: 0;
+  font-size: var(--s1);
+}
+
+.docs-nav ul {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.docs-nav a {
+  color: inherit;
+}
+
+.docs-admin-link {
+  font-weight: 700;
+}
+
+.docs-content {
+  min-width: 0;
+}
+
+.docs-component {
+  padding-block: var(--s2);
+  border-top: var(--border-thin) solid #d9cfbe;
+}
+
+.docs-component__about {
+  color: #554f45;
+}
+
+.docs-cover-example {
+  min-height: 16rem;
+}
+
+.docs-imposter-example {
+  min-height: 14rem;
+  position: relative;
 }
 
 .box\:raised {
@@ -35,6 +102,14 @@ body {
 }
 
 @media (max-width: 827px) {
+  .docs-page {
+    display: block;
+  }
+
+  .docs-content h1 {
+    font-size: var(--f2);
+  }
+
   .with-js .docs-nav-toggle {
     display: block;
   }
