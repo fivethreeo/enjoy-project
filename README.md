@@ -62,6 +62,48 @@ Set both variables when both directions require CORS. In parallel mode, use
 these variables instead of passing shared `--host`, `--port`, or `--addrport`
 arguments.
 
+## Independent TypeScript backends
+
+The repository has four sibling project directories:
+
+```text
+django-project/
+typescript-frontend/
+typescript-backend/
+typescript-ws-backend/
+```
+
+`typescript-backend` is a Node.js HTTP starter serving JSON at `/` and
+`/healthz`. `typescript-ws-backend` serves `/healthz` over HTTP and echoes text
+and binary WebSocket messages at `/`. Both require Node 20 or newer and read
+`HOST`, `PORT`, and `APP_NAME` from the environment. Defaults are localhost,
+ports 8001/8002, and app name `prosango`.
+
+Install and build locally from the repository root:
+
+```sh
+python run.py npm-backend ci
+python run.py npm-backend run build
+python run.py npm-ws-backend ci
+python run.py npm-ws-backend run build
+```
+
+For development, use `npm-backend run dev` or `npm-ws-backend run dev` through
+the wrapper. Append `HOST=127.0.0.1 PORT=8001 APP_NAME=prosango` assignments to
+override the environment. Each directory also has its own `.env.example`;
+after building, Node's `--env-file=.env` option can load a local file explicitly.
+Run `python run.py npm-backend test` and `python run.py npm-ws-backend test` for
+the service tests.
+
+These are deliberately minimal starters, not authenticated application APIs.
+Add authentication, WebSocket origin checks, and application-specific handlers
+before using them for private data. The WebSocket starter limits messages to
+1 MB and uses heartbeats to detect dead connections.
+
+The Ansible code deployment consumes each selected backend's prebuilt `dist`
+and lockfile. It installs production Node dependencies but never compiles
+TypeScript or runs frontend builds on the server.
+
 ## Runtime configuration and production
 
 Copy `django-project/.env.example` to `django-project/.env` for local settings.
@@ -82,6 +124,14 @@ the code checkout. Production upload permissions default to `0640` for files
 and `2750` for directories, suitable for an app-owned directory shared with
 Nginx through its group. Enable `DJANGO_TRUST_PROXY_HEADERS` only behind a
 trusted proxy; secure-cookie settings can be enabled independently for HTTPS.
+
+Memcached is optional. Set `DJANGO_MEMCACHED_LOCATION=127.0.0.1:11211` to use
+Django's `PyMemcacheCache` backend, with one-second connection/read timeouts.
+Leave it empty to retain Django's local-memory cache. Set
+`DJANGO_CACHE_KEY_PREFIX` to a distinct deployment name, such as `prosango` or
+`prosango_staging`, when sharing a cache server. Code accesses it through
+`django.core.cache.cache`; this does not automatically cache views or sessions.
+Keep Memcached private and treat its data as disposable, not persistent storage.
 
 Celery uses `prosango` as its app and autodiscovers `tasks.py` in installed
 Django apps. Configure `CELERY_BROKER_URL` with your RabbitMQ user/vhost and,

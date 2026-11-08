@@ -67,9 +67,9 @@ def run_ts(args, envs, wait=True):
     cmd = ["npm", "run", "dev", *(["--", *args] if args else [])]
     run_command(cmd, cwd=TS_DIR, env_updates=envs, wait=wait)
 
-def run_npm(args, envs, wait=True):
+def run_npm(args, envs, wait=True, cwd=TS_DIR):
     cmd = ["npm", *args]
-    run_command(cmd, cwd=TS_DIR, env_updates=envs, wait=wait)
+    run_command(cmd, cwd=cwd, env_updates=envs, wait=wait)
 
 def file_mtime(path):
     return os.stat(path).st_mtime_ns
@@ -168,7 +168,7 @@ def run_parallel(args, envs):
 # --- CLI Parser ---
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python run.py [setup | py | manage | ts | npm | parallel] [KEY=VALUE ...] [--args...]")
+        print("Usage: python run.py [setup | py | manage | ts | npm | npm-backend | npm-ws-backend | parallel] [KEY=VALUE ...] [--args...]")
         sys.exit(1)
         
     task = sys.argv[1]
@@ -197,10 +197,13 @@ def main():
         run_ts(forward_args, envs)
     elif task == "npm":
         run_npm(forward_args, envs)
+    elif task in ("npm-backend", "npm-ws-backend"):
+        directory = "typescript-backend" if task == "npm-backend" else "typescript-ws-backend"
+        run_npm(forward_args, envs, cwd=os.path.join(ROOT_DIR, directory))
     elif task == "parallel":
         run_parallel(forward_args, envs)
     else:
-        print(f"Unknown task: {task}. Choose from setup, py, manage, ts, npm, parallel.")
+        print(f"Unknown task: {task}. Choose from setup, py, manage, ts, npm, npm-backend, npm-ws-backend, parallel.")
         sys.exit(1)
 
 if __name__ == "__main__":

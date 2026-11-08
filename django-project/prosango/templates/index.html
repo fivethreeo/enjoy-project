@@ -11,7 +11,7 @@
 <body>
   <div class="docs-page">
     <header class="docs-header stack space-s0">
-      <a class="docs-logo" href="/">
+      <a class="docs-logo" href="{% url 'index' %}">
         <span aria-hidden="true">prosango.</span>
         <span class="vh">Prosango, homepage</span>
       </a>
@@ -38,7 +38,7 @@
             <li><a href="#reel">The Reel</a></li>
             <li><a href="#imposter">The Imposter</a></li>
           </ul>
-          <a class="docs-admin-link" href="/admin/">Open django-admin</a>
+          <a class="docs-admin-link" href="{% url 'admin:index' %}">Open django-admin</a>
         </div>
       </nav>
     </header>
@@ -50,7 +50,7 @@
         <div class="stack space-s1" data-cover-main>
           <h1 id="hero-title">A shared layout language for Django pages and their editor.</h1>
           <p>These component examples are the same small primitives available when authors build structured pages in django-admin.</p>
-          <p><a href="/admin/">Create and edit a page in django-admin</a></p>
+          <p><a href="{% url 'admin:index' %}">Create and edit a page in django-admin</a></p>
         </div>
         <p>Compose dependable interfaces instead of inventing a one-off layout for each page.</p>
       </section>
@@ -64,7 +64,7 @@
         <div class="box box:raised stack space-s1 padding-s1">
           <p>Heading</p>
           <p>The Stack makes vertical rhythm an explicit part of the component.</p>
-          <a href="/admin/">A related action</a>
+          <a href="{% url 'admin:index' %}">A related action</a>
         </div>
       </section>
 

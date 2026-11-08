@@ -6,7 +6,9 @@ from unittest.mock import patch
 
 from celery import shared_task
 from django.core.exceptions import ImproperlyConfigured
+from django.core.cache.backends.memcached import PyMemcacheCache
 from django.test import SimpleTestCase, override_settings
+from django.urls import get_script_prefix, set_script_prefix
 
 from .celery import app
 
@@ -54,6 +56,31 @@ class RuntimeSettingsTests(SimpleTestCase):
     def test_unconfigured_development_keeps_base_sqlite_database(self):
         self.assertNotIn('DATABASES', self.configuration())
 
+    def test_memcached_is_opt_in(self):
+        for environment in [{}, {'DJANGO_MEMCACHED_LOCATION': ''}]:
+            with self.subTest(environment=environment):
+                self.assertNotIn('CACHES', self.configuration(environment))
+
+    def test_django_mount_prefix_configures_reversed_urls(self):
+        self.assertIsNone(self.configuration()['FORCE_SCRIPT_NAME'])
+        config = self.configuration({'DJANGO_SCRIPT_NAME': '/django'})
+        self.assertEqual(config['FORCE_SCRIPT_NAME'], '/django')
+
+    def test_memcached_uses_distinct_deployment_namespaces(self):
+        keys = []
+        for prefix in ['prosango', 'prosango_staging']:
+            config = self.configuration(contents=(
+                'DJANGO_MEMCACHED_LOCATION=127.0.0.1:11211\n'
+                f'DJANGO_CACHE_KEY_PREFIX={prefix}\n'
+            ))
+            backend = config['CACHES']['default']
+            self.assertEqual(
+                backend['BACKEND'], 'django.core.cache.backends.memcached.PyMemcacheCache',
+            )
+            cache = PyMemcacheCache(backend['LOCATION'], backend)
+            keys.append(cache.make_key('same-key'))
+        self.assertNotEqual(*keys)
+
     def test_production_requires_secret_and_database(self):
         for environment in [
             {'DJANGO_DEBUG': 'false'},
@@ -98,3 +125,17 @@ class CeleryIntegrationTests(SimpleTestCase):
         self.assertTrue(app.conf.task_always_eager)
         result = runtime_test_task.delay('prosango')
         self.assertEqual(result.get(), 'PROSANGO')
+
+
+class DjangoMountTests(SimpleTestCase):
+    @override_settings(FORCE_SCRIPT_NAME='/django')
+    def test_homepage_and_admin_links_respect_the_mount_prefix(self):
+        prefix = get_script_prefix()
+        self.addCleanup(set_script_prefix, prefix)
+        set_script_prefix('/django/')
+        response = self.client.get('/')
+        self.assertContains(response, 'href="/django/"')
+        self.assertContains(response, 'href="/django/admin/"')
+        self.assertNotContains(response, 'href="/admin/"')
+        response = self.client.get('/admin/login/')
+        self.assertContains(response, 'action="/django/admin/login/"')

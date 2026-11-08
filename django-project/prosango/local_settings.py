@@ -68,6 +68,18 @@ SECURE_PROXY_SSL_HEADER = (
 SESSION_COOKIE_SECURE = env_bool('DJANGO_SESSION_COOKIE_SECURE')
 CSRF_COOKIE_SECURE = env_bool('DJANGO_CSRF_COOKIE_SECURE')
 TIME_ZONE = os.environ.get('DJANGO_TIME_ZONE', 'UTC')
+FORCE_SCRIPT_NAME = os.environ.get('DJANGO_SCRIPT_NAME') or None
+
+_memcached_location = os.environ.get('DJANGO_MEMCACHED_LOCATION', '').strip()
+if _memcached_location:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.memcached.PyMemcacheCache',
+            'LOCATION': _memcached_location,
+            'KEY_PREFIX': os.environ.get('DJANGO_CACHE_KEY_PREFIX') or 'prosango',
+            'OPTIONS': {'connect_timeout': 1, 'timeout': 1},
+        }
+    }
 
 CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'amqp://localhost')
 CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND') or None
