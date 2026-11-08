@@ -1,6 +1,7 @@
 import { defineConfig } from '@rsbuild/core';
 import { pluginSass } from '@rsbuild/plugin-sass';
 import { generateCustomStylingClasses } from './scripts/generate-custom-styling-classes.mjs';
+import { pluginDjangoReload } from './scripts/django-reload.mjs';
 
 const assetPrefix = process.env.RSBUILD_BASE_URL;
 const corsOrigin = process.env.RSBUILD_CORS_ORIGIN;
@@ -30,7 +31,7 @@ export default defineConfig(({ env }) => {
   const isDevelopment = env === 'development';
 
   return {
-  plugins: [pluginSass()],
+  plugins: [pluginSass(), pluginDjangoReload()],
   dev: {
     // Django serves the HTML, so hot-update assets must keep the Rsbuild origin.
     assetPrefix: assetPrefix || true,
@@ -56,12 +57,18 @@ export default defineConfig(({ env }) => {
   splitChunks: isDevelopment ? false : undefined,
   environments: {
     app: {
+      output: {
+        copy: [{ from: './src/fonts/OFL.txt', to: 'static/font/Shrikhand-OFL.txt' }],
+      },
       source: {
         entry: {
           index: './src/app.ts',
         },
       },
       tools: {
+        cssExtract: {
+          loaderOptions: { publicPath: '../../' },
+        },
         rspack: {
           output: {
             uniqueName: 'prosango_app',

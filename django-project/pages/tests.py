@@ -38,6 +38,13 @@ class PagePublicationTests(TestCase):
         self.assertContains(response, '<p>Published content</p>', html=True)
         self.assertNotContains(response, 'published-document-content')
 
+    @override_settings(TS_BACKEND_URL='/api/', TS_WS_BACKEND_URL='/ws/')
+    def test_published_page_exposes_backend_locations_on_body(self):
+        response = self.client.get(reverse('page', kwargs={'slug': self.page.slug}))
+        self.assertContains(
+            response, '<body data-ts-backend-url="/api/" data-ts-ws-backend-url="/ws/">',
+        )
+
     def test_root_slug_renders_aria_hidden_content(self):
         self.page.content = (
             '{"version": 1, "document": {"type": "doc", "content": ['

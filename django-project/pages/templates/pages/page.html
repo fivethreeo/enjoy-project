@@ -6,7 +6,7 @@
   <title>{{ page.title }}</title>
   {% rsbuild_entry 'index' %}
 </head>
-<body>
+<body data-ts-backend-url="{{ ts_backend_url }}" data-ts-ws-backend-url="{{ ts_ws_backend_url }}">
   {{ rendered_document }}
 </body>
 </html>

@@ -1,5 +1,5 @@
 asgiref==3.12.1
-celery==5.7.0
+celery[sqlalchemy]==5.7.0
 Django==6.1.2
 django-cors-headers==4.9.0
 django-filer==3.6.0

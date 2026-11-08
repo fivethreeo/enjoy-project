@@ -2,6 +2,9 @@
 import sys
 import os
 import subprocess
+import signal
+import tempfile
+from pathlib import Path
 import time
 
 # --- Helper Configuration ---
@@ -9,6 +12,8 @@ IS_WINDOWS = os.name == 'nt'
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 TS_DIR = os.path.join(ROOT_DIR, "typescript-frontend")
+TS_BACKEND_DIR = os.path.join(ROOT_DIR, "typescript-backend")
+TS_WS_BACKEND_DIR = os.path.join(ROOT_DIR, "typescript-ws-backend")
 PY_DIR = os.path.join(ROOT_DIR, "django-project")
 ICON_BUILD_DEBOUNCE_SECONDS = 1
 MASTER_ICONS_SVG = os.path.join(ROOT_DIR, "assets", "master_icons.svg")
@@ -45,8 +50,9 @@ def run_command(cmd, cwd, env_updates=None, wait=True):
 
 # --- Core Task Commands ---
 def setup():
-    print("📦 Installing TypeScript dependencies...")
-    run_command(["npm", "install"], cwd=TS_DIR)
+    for directory in (TS_DIR, TS_BACKEND_DIR, TS_WS_BACKEND_DIR):
+        print(f"📦 Installing dependencies for {os.path.basename(directory)}...")
+        run_command(["npm", "install"], cwd=directory)
     
     print("\n🐍 Creating Python virtual environment...")
     subprocess.run([sys.executable, "-m", "venv", os.path.join(PY_DIR, ".venv")], check=True)
@@ -83,11 +89,12 @@ def build_typescript_icons():
     )
 
 def run_parallel(args, envs):
-    print("🚀 Starting both Python and TypeScript services in parallel...")
-    print("💡 Press Ctrl+C at any time to shut down both.\n")
+    print("🚀 Starting Django, frontend, HTTP backend, WebSocket backend and Celery in parallel...")
+    print("💡 Press Ctrl+C at any time to shut down all five.\n")
 
-    django_port = envs.get("DJANGO_PORT", "8000")
-    rsbuild_port = envs.get("RSBUILD_PORT", "3000")
+    port_names = ("DJANGO_PORT", "RSBUILD_PORT", "TS_BACKEND_PORT", "TS_WS_BACKEND_PORT")
+    ports = dict(zip(port_names, ("8000", "3000", "8001", "8002")))
+    ports.update({name: envs[name] for name in port_names if name in envs})
     host = envs.get("HOST", "127.0.0.1").strip("[]")
     if not host:
         raise SystemExit("❌ HOST must not be empty.")
@@ -98,15 +105,16 @@ def run_parallel(args, envs):
     public_url_host = f"[{public_host}]" if ":" in public_host else public_host
 
     try:
-        django_port = int(django_port)
-        rsbuild_port = int(rsbuild_port)
-        if not 0 <= django_port <= 65535 or not 0 <= rsbuild_port <= 65535:
+        ports = {name: int(value) for name, value in ports.items()}
+        if any(not 1 <= value <= 65535 for value in ports.values()):
             raise ValueError
     except ValueError:
-        raise SystemExit("❌ DJANGO_PORT and RSBUILD_PORT must be valid port numbers (0-65535).")
+        raise SystemExit(f"❌ {', '.join(port_names)} must be valid port numbers (1-65535).")
 
-    if django_port == rsbuild_port:
-        raise SystemExit("❌ DJANGO_PORT and RSBUILD_PORT must be different.")
+    if len(set(ports.values())) != len(ports):
+        raise SystemExit(f"❌ {', '.join(port_names)} must all be different.")
+    if "--noreload" in args:
+        raise SystemExit("❌ Frontend-triggered Django reload requires the Django autoreloader.")
 
     if any(
         arg in ("--port", "--addrport", "--host")
@@ -115,37 +123,93 @@ def run_parallel(args, envs):
     ):
         raise SystemExit(
             "❌ Shared --port/--addrport/--host arguments are not supported in parallel mode. "
-            "Use HOST=..., DJANGO_PORT=..., and RSBUILD_PORT=... instead."
+            "Use HOST=... and the individual *_PORT assignments instead."
         )
 
     parallel_envs = envs.copy()
-    parallel_envs.setdefault("RSBUILD_BASE_URL", f"http://{public_url_host}:{rsbuild_port}")
+    parallel_envs.setdefault("RSBUILD_BASE_URL", f"http://{public_url_host}:{ports['RSBUILD_PORT']}")
     parallel_envs.setdefault("RSBUILD_HMR_HOST", public_host)
+    parallel_envs.setdefault(
+        "RSBUILD_CORS_ORIGIN",
+        os.environ.get("RSBUILD_CORS_ORIGIN", f"http://{public_url_host}:{ports['DJANGO_PORT']}"),
+    )
+    parallel_envs.setdefault(
+        "DJANGO_TS_BACKEND_URL",
+        os.environ.get("DJANGO_TS_BACKEND_URL", f"http://{public_url_host}:{ports['TS_BACKEND_PORT']}/"),
+    )
+    parallel_envs.setdefault(
+        "DJANGO_TS_WS_BACKEND_URL",
+        os.environ.get("DJANGO_TS_WS_BACKEND_URL", f"ws://{public_url_host}:{ports['TS_WS_BACKEND_PORT']}/"),
+    )
+    parallel_envs.setdefault(
+        "CELERY_BROKER_URL",
+        os.environ.get("CELERY_BROKER_URL") or f"sqla+sqlite:///{(Path(PY_DIR) / 'celery-broker.sqlite3').as_posix()}",
+    )
+    processes = []
+    reload_directory = tempfile.TemporaryDirectory(prefix="prosango-django-reload-") if not IS_WINDOWS else None
+    reload_trigger = Path(reload_directory.name) / "frontend-reload" if reload_directory else None
     
-    def start_process(command, cwd):
-        process = subprocess.Popen(command, cwd=cwd, env={**os.environ, **parallel_envs})
+    def start_process(command, cwd, env_updates=None):
+        process = subprocess.Popen(
+            subprocess.list2cmdline(command) if IS_WINDOWS else command,
+            cwd=cwd,
+            env={**os.environ, **parallel_envs, **(env_updates or {})},
+            shell=IS_WINDOWS,
+            start_new_session=not IS_WINDOWS,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if IS_WINDOWS else 0,
+        )
+        processes.append(process)
         active_processes.append(process)
         return process
 
     def start_django():
         return start_process(
-            [VENV_PYTHON, "manage.py", "runserver", f"{url_host}:{django_port}", *args],
+            [VENV_PYTHON, "manage.py", "runserver", f"{url_host}:{ports['DJANGO_PORT']}", *args],
             PY_DIR,
+            {"DJANGO_RELOAD_TRIGGER": str(reload_trigger)} if reload_trigger else None,
         )
 
     master_icons_mtime = file_mtime(MASTER_ICONS_SVG)
     build_icons_at = None
-    ts_process = start_process(
-        ["npm", "run", "dev", "--", "--host", host, "--port", str(rsbuild_port), *args],
-        TS_DIR,
-    )
-    django_process = start_django()
-
     try:
+        django_process = start_django()
+        if reload_trigger:
+            deadline = time.monotonic() + 15
+            while not reload_trigger.exists():
+                returncode = django_process.poll()
+                if returncode is not None:
+                    raise SystemExit(returncode or 1)
+                if time.monotonic() >= deadline:
+                    raise SystemExit("❌ Django's frontend reload handler did not become ready.")
+                time.sleep(0.05)
+        start_process(
+            ["npm", "run", "dev", "--", "--host", host, "--port", str(ports["RSBUILD_PORT"]), *args],
+            TS_DIR,
+            {"DJANGO_PID": str(django_process.pid)} if reload_trigger else None,
+        )
+        for directory, port_name in (
+            (TS_BACKEND_DIR, "TS_BACKEND_PORT"),
+            (TS_WS_BACKEND_DIR, "TS_WS_BACKEND_PORT"),
+        ):
+            start_process(
+                ["npm", "run", "dev"],
+                directory,
+                {"HOST": host, "PORT": str(ports[port_name])},
+            )
+        start_process(
+            [
+                VENV_PYTHON, "-m", "celery", "--app=prosango", "worker",
+                "--loglevel=INFO", "--pool=solo", "--concurrency=1",
+                "--without-gossip", "--without-mingle", "--without-heartbeat",
+            ],
+            PY_DIR,
+        )
         while True:
             time.sleep(0.5)
-            if ts_process.poll() is not None or django_process.poll() is not None:
-                break
+            for process in processes:
+                returncode = process.poll()
+                if returncode is not None:
+                    raise SystemExit(returncode or 1)
             latest_master_icons_mtime = file_mtime(MASTER_ICONS_SVG)
             if latest_master_icons_mtime > master_icons_mtime:
                 master_icons_mtime = latest_master_icons_mtime
@@ -159,11 +223,33 @@ def run_parallel(args, envs):
     except KeyboardInterrupt:
         print("\n🛑 Shutting down all services gracefully...")
     finally:
-        # Loop through running instances and kill them down neatly
-        for proc in active_processes:
-            if proc.poll() is None:
-                proc.terminate()
-        print("👋 Extited all parallel tasks safely.")
+        for proc in processes:
+            if IS_WINDOWS:
+                if proc.poll() is None:
+                    subprocess.run(
+                        ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    )
+            else:
+                try:
+                    os.killpg(proc.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+        for proc in processes:
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                if IS_WINDOWS:
+                    proc.kill()
+                else:
+                    try:
+                        os.killpg(proc.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                proc.wait()
+        print("👋 Exited all parallel tasks safely.")
+        if reload_directory:
+            reload_directory.cleanup()
 
 # --- CLI Parser ---
 def main():
@@ -198,8 +284,8 @@ def main():
     elif task == "npm":
         run_npm(forward_args, envs)
     elif task in ("npm-backend", "npm-ws-backend"):
-        directory = "typescript-backend" if task == "npm-backend" else "typescript-ws-backend"
-        run_npm(forward_args, envs, cwd=os.path.join(ROOT_DIR, directory))
+        directory = TS_BACKEND_DIR if task == "npm-backend" else TS_WS_BACKEND_DIR
+        run_npm(forward_args, envs, cwd=directory)
     elif task == "parallel":
         run_parallel(forward_args, envs)
     else:

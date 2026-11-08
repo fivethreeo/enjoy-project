@@ -1,6 +1,7 @@
 """Twelve-factor configuration: values are read from environment variables."""
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
@@ -57,7 +58,18 @@ if _database_name:
 elif not DEBUG:
     raise ImproperlyConfigured('DJANGO_DATABASE_NAME must be set when DEBUG is off')
 
-CORS_ALLOWED_ORIGINS = env_list('DJANGO_CORS_ALLOWED_ORIGINS')
+# In dev, assets are served by the Rsbuild dev server; the manifest is still used.
+RSBUILD_BASE_URL = os.environ.get(
+    'RSBUILD_BASE_URL', 'http://localhost:3000' if DEBUG else '/static'
+)
+_cors_defaults = ['http://localhost:3000', 'http://127.0.0.1:3000'] if DEBUG else []
+if DEBUG:
+    _frontend_url = urlsplit(RSBUILD_BASE_URL)
+    if _frontend_url.scheme in ('http', 'https') and _frontend_url.netloc:
+        _frontend_origin = f'{_frontend_url.scheme}://{_frontend_url.netloc}'
+        if _frontend_origin not in _cors_defaults:
+            _cors_defaults.append(_frontend_origin)
+CORS_ALLOWED_ORIGINS = env_list('DJANGO_CORS_ALLOWED_ORIGINS', ','.join(_cors_defaults))
 CORS_ALLOW_CREDENTIALS = env_bool('DJANGO_CORS_ALLOW_CREDENTIALS', False)
 CSRF_TRUSTED_ORIGINS = env_list('DJANGO_CSRF_TRUSTED_ORIGINS')
 SECURE_PROXY_SSL_HEADER = (
@@ -69,6 +81,8 @@ SESSION_COOKIE_SECURE = env_bool('DJANGO_SESSION_COOKIE_SECURE')
 CSRF_COOKIE_SECURE = env_bool('DJANGO_CSRF_COOKIE_SECURE')
 TIME_ZONE = os.environ.get('DJANGO_TIME_ZONE', 'UTC')
 FORCE_SCRIPT_NAME = os.environ.get('DJANGO_SCRIPT_NAME') or None
+TS_BACKEND_URL = os.environ.get('DJANGO_TS_BACKEND_URL', '').strip()
+TS_WS_BACKEND_URL = os.environ.get('DJANGO_TS_WS_BACKEND_URL', '').strip()
 
 _memcached_location = os.environ.get('DJANGO_MEMCACHED_LOCATION', '').strip()
 if _memcached_location:
@@ -81,17 +95,15 @@ if _memcached_location:
         }
     }
 
-CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'amqp://localhost')
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL') or (
+    f"sqla+sqlite:///{(Path(__file__).resolve().parent.parent / 'celery-broker.sqlite3').as_posix()}"
+    if DEBUG else 'amqp://localhost'
+)
 CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND') or None
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
-
-# In dev, assets are served by the Rsbuild dev server; the manifest is still used
-RSBUILD_BASE_URL = os.environ.get(
-    'RSBUILD_BASE_URL', 'http://localhost:3000' if DEBUG else '/static'
-)
 
 # Production reads the manifest collected into STATIC_ROOT.
 _static_root = os.environ.get('DJANGO_STATIC_ROOT')

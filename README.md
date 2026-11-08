@@ -18,17 +18,51 @@ Stack, and related primitives.
 
 ## Development
 
-Run the Django and Rsbuild development servers together with `python run.py parallel`.
-They bind to `127.0.0.1` and use ports 8000 and 3000 respectively. Override the
-host and ports with `HOST`, `DJANGO_PORT`, and `RSBUILD_PORT`, for example:
+Run Django, Rsbuild, both TypeScript backends and a Celery worker together with
+`python run.py parallel`. The web services bind to `127.0.0.1` on
+ports 8000, 3000, 8001 and 8002 respectively. `python run.py setup` installs
+dependencies for all four projects. Override the host and ports, for example:
 
 ```sh
-python run.py parallel HOST=0.0.0.0 DJANGO_PORT=8001 RSBUILD_PORT=3001
+python run.py parallel HOST=0.0.0.0 DJANGO_PORT=8100 RSBUILD_PORT=3100 TS_BACKEND_PORT=8101 TS_WS_BACKEND_PORT=8102
 ```
 
+Rsbuild watches and rebuilds frontend assets; both backends use `tsx watch` to
+reload TypeScript and restart on source changes. Django's development server
+reloads Python changes. Press Ctrl+C to stop all five, including their child
+processes. If a dev runner exits, the launcher stops the other services and
+exits with a failure status.
+
+Dev endpoints use separate ports: Django at `http://127.0.0.1:8000/`, HTTP health
+at `http://127.0.0.1:8001/healthz`, and WebSockets at `ws://127.0.0.1:8002/`.
+The production Nginx `/api/` and `/ws/` prefixes are not applied in this mode.
+
+The development worker uses a local SQLite broker at
+`django-project/celery-broker.sqlite3`; PostgreSQL, RabbitMQ and containers are
+not required. Django's application data stays in `django-project/db.sqlite3`
+when `DJANGO_DATABASE_NAME` is empty. For a fresh development database, run
+`python run.py manage migrate` before starting the stack.
+
+The worker initializes the same Django settings and database as the web server,
+so tasks can use the Django ORM for reads and writes. It runs a single-process
+solo pool without Beat. Restart `parallel` after changing task definitions;
+Celery does not automatically reload them.
+
+SQLite messaging is development-only and does not provide RabbitMQ's event or
+remote-control features. Concurrent application database writes can encounter
+SQLite locking. Production keeps PostgreSQL/RabbitMQ. Explicit
+`CELERY_BROKER_URL` values override the development default; a result backend
+remains optional.
+
 In parallel mode, Rsbuild writes development JavaScript assets to disk. When
-it emits updated JavaScript, the launcher restarts Django so admin asset
-manifests are reloaded. Changes to `assets/master_icons.svg` regenerate
+it completes a successful rebuild, its dev hook sends SIGHUP to `DJANGO_PID`,
+which the launcher sets after starting Django first. Django's dev-only signal
+handler touches an autoreloader-watched file: the serving child restarts while
+the parent PID remains stable. The first compilation and failed builds do not
+signal Django. This Unix-only hook is disabled for standalone Rsbuild, Windows
+and production builds; parallel mode does not support `--noreload`.
+
+Changes to `assets/master_icons.svg` regenerate
 `typescript-frontend/src/icons.ts` automatically; unchanged generated output
 is not rewritten. Thus, a manual icon generation run restarts Django only when
 Rsbuild emits a changed bundle.
@@ -38,7 +72,8 @@ The standalone editor playground remains available directly from Rsbuild at
 assets are served under `/playground/`, independently of the Django app and
 editor environments.
 
-The ports must be different. `HOST` controls where both servers listen; use
+All four ports must be different and between 1 and 65535. `HOST` controls where
+all services listen; use
 `PUBLIC_HOST` when it differs from the address opened in a browser. For
 example, to bind on all interfaces while accessing the application from the
 local network:
@@ -47,20 +82,30 @@ local network:
 python run.py parallel HOST=0.0.0.0 PUBLIC_HOST=192.168.1.2
 ```
 
-`PUBLIC_HOST` is used for Rsbuild asset URLs and the HMR WebSocket. CORS is
-disabled by default in development. Enable it independently when needed:
+`PUBLIC_HOST` is used for Rsbuild asset URLs and the HMR WebSocket. In development,
+Django permits CORS from `http://localhost:3000`, `http://127.0.0.1:3000` and the
+configured `RSBUILD_BASE_URL` origin (including custom hosts/ports). Production
+still requires explicit origins. `parallel` also sets `RSBUILD_CORS_ORIGIN` to
+the Django origin derived from `PUBLIC_HOST` and `DJANGO_PORT`, allowing fonts
+and other frontend assets to load from port 3000 into Django-served pages.
+Override either direction when needed:
 
 ```sh
-# Permit requests to Django from an Rsbuild origin.
+# Override the allowed origins for requests to Django.
 python run.py parallel DJANGO_CORS_ALLOWED_ORIGINS=http://localhost:3000
 
-# Permit Django-served pages to load Rsbuild assets cross-origin.
+# Override the Django origin allowed to load Rsbuild assets.
 python run.py parallel RSBUILD_CORS_ORIGIN=http://localhost:8000
 ```
 
-Set both variables when both directions require CORS. In parallel mode, use
-these variables instead of passing shared `--host`, `--port`, or `--addrport`
-arguments.
+An explicit empty `DJANGO_CORS_ALLOWED_ORIGINS` disables Django's dev defaults.
+An explicit empty `RSBUILD_CORS_ORIGIN` disables the launcher's Rsbuild CORS default.
+Cookie-authenticated cross-origin requests additionally need
+`DJANGO_CORS_ALLOW_CREDENTIALS=true`, matching `DJANGO_CSRF_TRUSTED_ORIGINS` and
+the normal CSRF token; CORS does not bypass CSRF protection. In parallel mode, use
+the environment assignments instead of passing shared `--host`, `--port`, or
+`--addrport` arguments. The TypeScript starters do not enable cross-origin HTTP
+access automatically.
 
 ## Independent TypeScript backends
 
@@ -103,6 +148,29 @@ before using them for private data. The WebSocket starter limits messages to
 The Ansible code deployment consumes each selected backend's prebuilt `dist`
 and lockfile. It installs production Node dependencies but never compiles
 TypeScript or runs frontend builds on the server.
+
+### Backend locations in Django pages
+
+Django reads `DJANGO_TS_BACKEND_URL` and `DJANGO_TS_WS_BACKEND_URL` into
+`TS_BACKEND_URL` and `TS_WS_BACKEND_URL`. Parallel dev automatically sets
+browser-facing URLs using `PUBLIC_HOST` and the backend ports (by default
+`http://127.0.0.1:8001/` and `ws://127.0.0.1:8002/`). Explicit environment or
+command-line values override these defaults.
+
+Deployment sets the enabled services' public gateway paths, such as `/api/`
+and `/ws/`, even when their servers are elsewhere. Disabled services have empty
+values; private upstream addresses are never advertised to the browser.
+
+The homepage and published pages expose these on `<body>`:
+
+```html
+<body data-ts-backend-url="/api/" data-ts-ws-backend-url="/ws/">
+```
+
+JavaScript reads `document.body.dataset.tsBackendUrl` and
+`document.body.dataset.tsWsBackendUrl`. Resolve relative locations against the
+page URL; for WebSockets use `ws:` for HTTP pages and `wss:` for HTTPS pages.
+This advertises endpoints only; it does not enable CORS or authentication.
 
 ## Runtime configuration and production
 

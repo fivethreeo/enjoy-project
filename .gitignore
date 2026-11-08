@@ -41,6 +41,7 @@ coverage/
 .env.*
 !.env.example
 django-project/db.sqlite3
+django-project/celery-broker.sqlite3*
 django-project/media/
 django-project/test-media/
 celerybeat-schedule*
