@@ -28,7 +28,7 @@ def configure_frontend_reload():
 
 def main():
     """Run administrative tasks."""
-    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'prosango.settings')
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'template.settings')
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:

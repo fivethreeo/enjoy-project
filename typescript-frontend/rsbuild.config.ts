@@ -1,30 +1,13 @@
 import { defineConfig } from '@rsbuild/core';
 import { pluginSass } from '@rsbuild/plugin-sass';
-import { generateCustomStylingClasses } from './scripts/generate-custom-styling-classes.mjs';
 import { pluginDjangoReload } from './scripts/django-reload.mjs';
 
 const assetPrefix = process.env.RSBUILD_BASE_URL;
-const corsOrigin = process.env.RSBUILD_CORS_ORIGIN;
+const corsOrigins = (process.env.RSBUILD_CORS_ORIGIN || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 const hmrHost = process.env.RSBUILD_HMR_HOST;
-
-function environmentAssetPrefix(path: string) {
-  return assetPrefix ? `${assetPrefix}${path}` : path;
-}
-
-const customStylingClassListPlugin = {
-  apply(compiler: {
-    hooks: {
-      beforeCompile: {
-        tap: (name: string, callback: () => void) => void;
-      };
-    };
-  }) {
-    compiler.hooks.beforeCompile.tap(
-      'generate-custom-styling-classes',
-      generateCustomStylingClasses,
-    );
-  },
-};
 
 // Docs: https://rsbuild.rs/config/
 export default defineConfig(({ env }) => {
@@ -45,7 +28,7 @@ export default defineConfig(({ env }) => {
   server: {
     port: 3000,
     strictPort: true,
-    cors: corsOrigin ? { origin: corsOrigin } : false,
+    cors: corsOrigins.length ? { origin: corsOrigins } : false,
     headers: {
       'Cache-Control': 'no-store',
     },
@@ -55,87 +38,20 @@ export default defineConfig(({ env }) => {
     filenameHash: !isDevelopment,
   },
   splitChunks: isDevelopment ? false : undefined,
-  environments: {
-    app: {
-      output: {
-        copy: [{ from: './src/fonts/OFL.txt', to: 'static/font/Shrikhand-OFL.txt' }],
-      },
-      source: {
-        entry: {
-          index: './src/app.ts',
-        },
-      },
-      tools: {
-        cssExtract: {
-          loaderOptions: { publicPath: '../../' },
-        },
-        rspack: {
-          output: {
-            uniqueName: 'prosango_app',
-          },
-        },
-      },
-    },
-    editor: {
-      dev: {
-        // Each environment owns its runtime and HMR update namespace.
-        assetPrefix: environmentAssetPrefix('/editor'),
-      },
-      source: {
-        entry: {
-          editor: './src/editor.ts',
-        },
-      },
-      output: {
-        distPath: {
-          root: 'dist/editor',
-        },
-        manifest: 'editor-manifest.json',
-      },
-      tools: {
-        rspack: {
-          output: {
-            uniqueName: 'prosango_editor',
-          },
-        },
-      },
-    },
-    playground: {
-      dev: {
-        // Do not load the app environment's runtime at /static/js/runtime.js.
-        assetPrefix: environmentAssetPrefix('/playground'),
-      },
-      html: {
-        template: './src/playground.html',
-      },
-      source: {
-        entry: {
-          playground: './src/playground.ts',
-        },
-      },
-      output: {
-        distPath: {
-          root: 'dist/playground',
-        },
-        manifest: 'playground-manifest.json',
-      },
-      tools: {
-        rspack: {
-          output: {
-            uniqueName: 'prosango_playground',
-          },
-        },
-      },
+  source: {
+    entry: {
+      index: './src/app.ts',
     },
   },
   tools: {
+    cssExtract: {
+      loaderOptions: { publicPath: '../../' },
+    },
     rspack: {
-      plugins: [customStylingClassListPlugin],
-      output: isDevelopment
-        ? {
-            chunkFilename: 'static/js/[name].js',
-          }
-        : undefined,
+      output: {
+        uniqueName: 'template_app',
+        ...(isDevelopment ? { chunkFilename: 'static/js/[name].js' } : {}),
+      },
       optimization: {
         runtimeChunk: 'single',
       },

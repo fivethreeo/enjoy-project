@@ -32,18 +32,26 @@ class ParallelTests(unittest.TestCase):
         self.assertEqual(launches[0].args[0], [run.VENV_PYTHON, "manage.py", "runserver", "127.0.0.1:8000"])
         self.assertEqual(launches[1].args[0], ["npm", "run", "dev", "--", "--host", "127.0.0.1", "--port", "3000"])
         self.assertEqual(launches[1].kwargs["env"]["DJANGO_PID"], str(self.processes[0].pid))
-        self.assertEqual(launches[1].kwargs["env"]["RSBUILD_CORS_ORIGIN"], "http://127.0.0.1:8000")
+        self.assertEqual(
+            launches[1].kwargs["env"]["RSBUILD_CORS_ORIGIN"],
+            "http://127.0.0.1:8000,http://127.0.0.1:8001",
+        )
         self.assertIn("DJANGO_RELOAD_TRIGGER", launches[0].kwargs["env"])
         self.assertNotIn("DJANGO_RELOAD_TRIGGER", launches[4].kwargs["env"])
         self.assertEqual(launches[0].kwargs["env"]["DJANGO_TS_BACKEND_URL"], "http://127.0.0.1:8001/")
         self.assertEqual(launches[0].kwargs["env"]["DJANGO_TS_WS_BACKEND_URL"], "ws://127.0.0.1:8002/")
+        self.assertEqual(launches[2].kwargs["env"]["DJANGO_INTERNAL_URL"], "http://127.0.0.1:8000/")
+        self.assertEqual(
+            launches[3].kwargs["env"]["WS_ALLOWED_ORIGINS"],
+            "http://127.0.0.1:8000,http://127.0.0.1:8001,http://127.0.0.1:3000",
+        )
         for index, directory, port in [(2, run.TS_BACKEND_DIR, "8001"), (3, run.TS_WS_BACKEND_DIR, "8002")]:
             self.assertEqual(launches[index].args[0], ["npm", "run", "dev"])
             self.assertEqual(launches[index].kwargs["cwd"], directory)
             self.assertEqual(launches[index].kwargs["env"]["HOST"], "127.0.0.1")
             self.assertEqual(launches[index].kwargs["env"]["PORT"], port)
         self.assertEqual(launches[4].kwargs["cwd"], run.PY_DIR)
-        self.assertEqual(launches[4].args[0][:5], [run.VENV_PYTHON, "-m", "celery", "--app=prosango", "worker"])
+        self.assertEqual(launches[4].args[0][:5], [run.VENV_PYTHON, "-m", "celery", "--app=template", "worker"])
         self.assertIn("--pool=solo", launches[4].args[0])
         broker = launches[0].kwargs["env"]["CELERY_BROKER_URL"]
         self.assertTrue(broker.startswith("sqla+sqlite:///"))
@@ -64,12 +72,33 @@ class ParallelTests(unittest.TestCase):
         self.assertIn("[::1]:8100", launches[0].args[0])
         self.assertEqual(launches[1].kwargs["env"]["RSBUILD_BASE_URL"], "http://[2001:db8::1]:3100")
         self.assertEqual(launches[1].kwargs["env"]["RSBUILD_HMR_HOST"], "2001:db8::1")
-        self.assertEqual(launches[1].kwargs["env"]["RSBUILD_CORS_ORIGIN"], "http://[2001:db8::1]:8100")
+        self.assertEqual(
+            launches[1].kwargs["env"]["RSBUILD_CORS_ORIGIN"],
+            "http://[2001:db8::1]:8100,http://[2001:db8::1]:8101",
+        )
         self.assertEqual(launches[0].kwargs["env"]["DJANGO_TS_BACKEND_URL"], "http://[2001:db8::1]:8101/")
         self.assertEqual(launches[0].kwargs["env"]["DJANGO_TS_WS_BACKEND_URL"], "ws://[2001:db8::1]:8102/")
         self.assertEqual(launches[2].kwargs["env"]["HOST"], "::1")
         self.assertEqual(launches[2].kwargs["env"]["PORT"], "8101")
         self.assertEqual(launches[3].kwargs["env"]["PORT"], "8102")
+        self.assertEqual(launches[2].kwargs["env"]["DJANGO_INTERNAL_URL"], "http://[::1]:8100/")
+
+    def test_wildcard_bind_uses_loopback_for_internal_auth_and_preserves_overrides(self):
+        run.run_parallel([], {"HOST": "0.0.0.0", "PUBLIC_HOST": "192.0.2.1"})
+        self.assertEqual(
+            self.popen.call_args_list[2].kwargs["env"]["DJANGO_INTERNAL_URL"],
+            "http://127.0.0.1:8000/",
+        )
+        self.popen.reset_mock(side_effect=True)
+        self.popen.side_effect = self.processes
+        with patch.dict(run.os.environ, {
+            "DJANGO_INTERNAL_URL": "http://django.internal/django/",
+            "WS_ALLOWED_ORIGINS": "https://app.example.com",
+        }):
+            run.run_parallel([], {})
+        environment = self.popen.call_args_list[3].kwargs["env"]
+        self.assertEqual(environment["DJANGO_INTERNAL_URL"], "http://django.internal/django/")
+        self.assertEqual(environment["WS_ALLOWED_ORIGINS"], "https://app.example.com")
 
     def test_shell_rsbuild_cors_origin_overrides_the_generated_origin(self):
         with patch.dict(run.os.environ, {"RSBUILD_CORS_ORIGIN": "https://django.example.com"}):
@@ -83,6 +112,12 @@ class ParallelTests(unittest.TestCase):
         with patch.dict(run.os.environ, {"RSBUILD_CORS_ORIGIN": "https://django.example.com"}):
             run.run_parallel([], {"RSBUILD_CORS_ORIGIN": ""})
         self.assertEqual(self.popen.call_args_list[1].kwargs["env"]["RSBUILD_CORS_ORIGIN"], "")
+
+    def test_explicit_rsbuild_cors_origin_list_overrides_shell_and_defaults(self):
+        origins = "https://django.example.com,https://backend.example.com"
+        with patch.dict(run.os.environ, {"RSBUILD_CORS_ORIGIN": "https://other.example.com"}):
+            run.run_parallel([], {"RSBUILD_CORS_ORIGIN": origins})
+        self.assertEqual(self.popen.call_args_list[1].kwargs["env"]["RSBUILD_CORS_ORIGIN"], origins)
 
     def test_explicit_backend_urls_override_generated_dev_locations(self):
         with patch.dict(run.os.environ, {

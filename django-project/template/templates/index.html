@@ -1,0 +1,12 @@
+{% load rsbuild %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Template project</title>
+  {% rsbuild_entry 'index' %}
+</head>
+<body data-ts-backend-url="{{ ts_backend_url }}" data-ts-ws-backend-url="{{ ts_ws_backend_url }}">
+  <div id="root"></div>
+</body>
+</html>

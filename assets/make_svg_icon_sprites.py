@@ -231,7 +231,7 @@ def _flatten_svg(source_tree, output_svg, guide_ids):
 
     output_path = Path(output_svg)
     with tempfile.TemporaryDirectory(
-        prefix=".prosango-icon-flatten-", dir=output_path.parent
+        prefix=".template-icon-flatten-", dir=output_path.parent
     ) as temp_dir:
         temp_dir = Path(temp_dir)
         artwork_path = temp_dir / "artwork.svg"
@@ -439,7 +439,7 @@ def _compile_icons(input_svg, squares_layer_id, require_all_guides=True):
     empty_guides = []
 
     with tempfile.TemporaryDirectory(
-        prefix=".prosango-icon-sprite-", dir=source_path.parent
+        prefix=".template-icon-sprite-", dir=source_path.parent
     ) as temp_dir:
         flattened_path = Path(temp_dir) / "flattened.svg"
         _flatten_svg(

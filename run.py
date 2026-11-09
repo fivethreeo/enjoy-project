@@ -103,6 +103,8 @@ def run_parallel(args, envs):
     if not public_host:
         raise SystemExit("❌ PUBLIC_HOST must not be empty.")
     public_url_host = f"[{public_host}]" if ":" in public_host else public_host
+    internal_host = '127.0.0.1' if host == '0.0.0.0' else '::1' if host == '::' else host
+    internal_url_host = f'[{internal_host}]' if ':' in internal_host else internal_host
 
     try:
         ports = {name: int(value) for name, value in ports.items()}
@@ -130,8 +132,25 @@ def run_parallel(args, envs):
     parallel_envs.setdefault("RSBUILD_BASE_URL", f"http://{public_url_host}:{ports['RSBUILD_PORT']}")
     parallel_envs.setdefault("RSBUILD_HMR_HOST", public_host)
     parallel_envs.setdefault(
+        "DJANGO_INTERNAL_URL",
+        os.environ.get("DJANGO_INTERNAL_URL", f"http://{internal_url_host}:{ports['DJANGO_PORT']}/"),
+    )
+    parallel_envs.setdefault(
+        "WS_ALLOWED_ORIGINS",
+        os.environ.get(
+            "WS_ALLOWED_ORIGINS",
+            f"http://{public_url_host}:{ports['DJANGO_PORT']},"
+            f"http://{public_url_host}:{ports['TS_BACKEND_PORT']},"
+            f"http://{public_url_host}:{ports['RSBUILD_PORT']}",
+        ),
+    )
+    parallel_envs.setdefault(
         "RSBUILD_CORS_ORIGIN",
-        os.environ.get("RSBUILD_CORS_ORIGIN", f"http://{public_url_host}:{ports['DJANGO_PORT']}"),
+        os.environ.get(
+            "RSBUILD_CORS_ORIGIN",
+            f"http://{public_url_host}:{ports['DJANGO_PORT']},"
+            f"http://{public_url_host}:{ports['TS_BACKEND_PORT']}",
+        ),
     )
     parallel_envs.setdefault(
         "DJANGO_TS_BACKEND_URL",
@@ -146,7 +165,7 @@ def run_parallel(args, envs):
         os.environ.get("CELERY_BROKER_URL") or f"sqla+sqlite:///{(Path(PY_DIR) / 'celery-broker.sqlite3').as_posix()}",
     )
     processes = []
-    reload_directory = tempfile.TemporaryDirectory(prefix="prosango-django-reload-") if not IS_WINDOWS else None
+    reload_directory = tempfile.TemporaryDirectory(prefix="template-django-reload-") if not IS_WINDOWS else None
     reload_trigger = Path(reload_directory.name) / "frontend-reload" if reload_directory else None
     
     def start_process(command, cwd, env_updates=None):
@@ -198,7 +217,7 @@ def run_parallel(args, envs):
             )
         start_process(
             [
-                VENV_PYTHON, "-m", "celery", "--app=prosango", "worker",
+                VENV_PYTHON, "-m", "celery", "--app=template", "worker",
                 "--loglevel=INFO", "--pool=solo", "--concurrency=1",
                 "--without-gossip", "--without-mingle", "--without-heartbeat",
             ],
