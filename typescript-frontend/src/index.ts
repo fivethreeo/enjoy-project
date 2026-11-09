@@ -1,4 +1,5 @@
 import { initEveryLayout } from './everylayout/init';
+import './index.scss';
 
 initEveryLayout();
 

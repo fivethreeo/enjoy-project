@@ -40,7 +40,7 @@ export default defineConfig(({ env }) => {
   splitChunks: isDevelopment ? false : undefined,
   source: {
     entry: {
-      index: './src/app.ts',
+      index: './src/index.ts',
     },
   },
   tools: {

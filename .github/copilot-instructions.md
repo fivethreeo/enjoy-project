@@ -13,7 +13,7 @@
 
 ## Architecture
 
-- Django (`django-project/template`) owns HTTP routing, the admin, configuration, database access, and the HTML shell. The root URL is a `TemplateView` for `templates/index.html`, with an empty `#root` element for new application code. The frontend entry is `typescript-frontend/src/app.ts`; it initializes Every Layout, adds the `with-js` body marker, and supports an optional docs navigation toggle.
+- Django (`django-project/template`) owns HTTP routing, the admin, configuration, database access, and the HTML shell. The root URL is a `TemplateView` for `templates/index.html`, with an empty `#root` element for new application code. The frontend entry is `typescript-frontend/src/index.ts`; it initializes Every Layout, adds the `with-js` body marker, and supports an optional docs navigation toggle.
 - Rsbuild produces the browser assets and `typescript-frontend/dist/manifest.json`. The `{% rsbuild_entry 'index' %}` tag in the Django template reads that manifest and emits its CSS and deferred JavaScript URLs. New frontend entry points must be represented both in Rsbuild’s manifest and in the consuming Django template tag.
 - In development, Rsbuild writes the manifest to disk and Django loads its URLs from `RSBUILD_BASE_URL` (normally `http://localhost:3000`). Therefore start the frontend server or build the frontend before rendering Django pages; otherwise the template tag raises a clear manifest error.
 - In production, run the frontend build before Django static-file collection. `STATICFILES_DIRS` includes the frontend `dist` directory, `collectstatic` copies the manifest/assets to `STATIC_ROOT`, and production configuration reads the manifest from there.
