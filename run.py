@@ -51,14 +51,16 @@ def run_command(cmd, cwd, env_updates=None, wait=True):
 # --- Core Task Commands ---
 def setup():
     for directory in (TS_DIR, TS_BACKEND_DIR, TS_WS_BACKEND_DIR):
-        print(f"📦 Installing dependencies for {os.path.basename(directory)}...")
-        run_command(["npm", "install"], cwd=directory)
+        if os.path.isdir(directory):
+            print(f"📦 Installing dependencies for {os.path.basename(directory)}...")
+            run_command(["npm", "install"], cwd=directory)
     
-    print("\n🐍 Creating Python virtual environment...")
-    subprocess.run([sys.executable, "-m", "venv", os.path.join(PY_DIR, ".venv")], check=True)
+    if os.path.isdir(PY_DIR):
+        print("\n🐍 Creating Python virtual environment...")
+        subprocess.run([sys.executable, "-m", "venv", os.path.join(PY_DIR, ".venv")], check=True)
     
-    print("\n📦 Installing Python dependencies inside .venv...")
-    run_command([VENV_PIP, "install", "-r", "requirements.txt"], cwd=PY_DIR)
+        print("\n📦 Installing Python dependencies inside .venv...")
+        run_command([VENV_PIP, "install", "-r", "requirements.txt"], cwd=PY_DIR)
     print("\n✅ Setup complete!")
 
 def run_py(args, envs, wait=True):
@@ -89,12 +91,33 @@ def build_typescript_icons():
     )
 
 def run_parallel(args, envs):
-    print("🚀 Starting Django, frontend, HTTP backend, WebSocket backend and Celery in parallel...")
-    print("💡 Press Ctrl+C at any time to shut down all five.\n")
+    django_enabled = os.path.isdir(PY_DIR)
+    frontend_enabled = os.path.isdir(TS_DIR)
+    backend_enabled = os.path.isdir(TS_BACKEND_DIR)
+    ws_enabled = os.path.isdir(TS_WS_BACKEND_DIR)
+    ports = {
+        name: envs.get(name, default)
+        for enabled, name, default in (
+            (django_enabled, "DJANGO_PORT", "8000"),
+            (frontend_enabled, "RSBUILD_PORT", "3000"),
+            (backend_enabled, "TS_BACKEND_PORT", "8001"),
+            (ws_enabled, "TS_WS_BACKEND_PORT", "8002"),
+        )
+        if enabled
+    }
+    if not ports:
+        raise SystemExit("❌ No project directories found to run.")
+    port_names = tuple(ports)
+    services = [
+        name for enabled, name in (
+            (django_enabled, "Django"), (frontend_enabled, "frontend"),
+            (backend_enabled, "HTTP backend"), (ws_enabled, "WebSocket backend"),
+            (django_enabled, "Celery"),
+        ) if enabled
+    ]
+    print(f"🚀 Starting {', '.join(services)} in parallel...")
+    print("💡 Press Ctrl+C at any time to shut down all services.\n")
 
-    port_names = ("DJANGO_PORT", "RSBUILD_PORT", "TS_BACKEND_PORT", "TS_WS_BACKEND_PORT")
-    ports = dict(zip(port_names, ("8000", "3000", "8001", "8002")))
-    ports.update({name: envs[name] for name in port_names if name in envs})
     host = envs.get("HOST", "127.0.0.1").strip("[]")
     if not host:
         raise SystemExit("❌ HOST must not be empty.")
@@ -115,7 +138,7 @@ def run_parallel(args, envs):
 
     if len(set(ports.values())) != len(ports):
         raise SystemExit(f"❌ {', '.join(port_names)} must all be different.")
-    if "--noreload" in args:
+    if django_enabled and frontend_enabled and "--noreload" in args:
         raise SystemExit("❌ Frontend-triggered Django reload requires the Django autoreloader.")
 
     if any(
@@ -129,47 +152,67 @@ def run_parallel(args, envs):
         )
 
     parallel_envs = envs.copy()
-    parallel_envs.setdefault("RSBUILD_BASE_URL", f"http://{public_url_host}:{ports['RSBUILD_PORT']}")
-    parallel_envs.setdefault("RSBUILD_HMR_HOST", public_host)
+    if frontend_enabled:
+        parallel_envs.setdefault("RSBUILD_BASE_URL", f"http://{public_url_host}:{ports['RSBUILD_PORT']}")
+        parallel_envs.setdefault("RSBUILD_HMR_HOST", public_host)
     parallel_envs.setdefault(
         "DJANGO_INTERNAL_URL",
-        os.environ.get("DJANGO_INTERNAL_URL", f"http://{internal_url_host}:{ports['DJANGO_PORT']}/"),
+        os.environ.get(
+            "DJANGO_INTERNAL_URL",
+            f"http://{internal_url_host}:{ports['DJANGO_PORT']}/" if django_enabled else "",
+        ),
     )
     parallel_envs.setdefault(
         "WS_INTERNAL_URL",
-        os.environ.get("WS_INTERNAL_URL", f"http://{internal_url_host}:{ports['TS_WS_BACKEND_PORT']}/"),
+        os.environ.get(
+            "WS_INTERNAL_URL",
+            f"http://{internal_url_host}:{ports['TS_WS_BACKEND_PORT']}/" if ws_enabled else "",
+        ),
     )
     parallel_envs.setdefault(
         "WS_ALLOWED_ORIGINS",
         os.environ.get(
             "WS_ALLOWED_ORIGINS",
-            f"http://{public_url_host}:{ports['DJANGO_PORT']},"
-            f"http://{public_url_host}:{ports['TS_BACKEND_PORT']},"
-            f"http://{public_url_host}:{ports['RSBUILD_PORT']}",
+            ",".join(
+                f"http://{public_url_host}:{ports[name]}"
+                for name in ("DJANGO_PORT", "TS_BACKEND_PORT", "RSBUILD_PORT") if name in ports
+            ),
         ),
     )
     parallel_envs.setdefault(
         "RSBUILD_CORS_ORIGIN",
         os.environ.get(
             "RSBUILD_CORS_ORIGIN",
-            f"http://{public_url_host}:{ports['DJANGO_PORT']},"
-            f"http://{public_url_host}:{ports['TS_BACKEND_PORT']}",
+            ",".join(
+                f"http://{public_url_host}:{ports[name]}"
+                for name in ("DJANGO_PORT", "TS_BACKEND_PORT") if name in ports
+            ),
         ),
     )
     parallel_envs.setdefault(
         "DJANGO_TS_BACKEND_URL",
-        os.environ.get("DJANGO_TS_BACKEND_URL", f"http://{public_url_host}:{ports['TS_BACKEND_PORT']}/"),
+        os.environ.get(
+            "DJANGO_TS_BACKEND_URL",
+            f"http://{public_url_host}:{ports['TS_BACKEND_PORT']}/" if backend_enabled else "",
+        ),
     )
     parallel_envs.setdefault(
         "DJANGO_TS_WS_BACKEND_URL",
-        os.environ.get("DJANGO_TS_WS_BACKEND_URL", f"ws://{public_url_host}:{ports['TS_WS_BACKEND_PORT']}/"),
+        os.environ.get(
+            "DJANGO_TS_WS_BACKEND_URL",
+            f"ws://{public_url_host}:{ports['TS_WS_BACKEND_PORT']}/" if ws_enabled else "",
+        ),
     )
-    parallel_envs.setdefault(
-        "CELERY_BROKER_URL",
-        os.environ.get("CELERY_BROKER_URL") or f"sqla+sqlite:///{(Path(PY_DIR) / 'celery-broker.sqlite3').as_posix()}",
-    )
+    if django_enabled:
+        parallel_envs.setdefault(
+            "CELERY_BROKER_URL",
+            os.environ.get("CELERY_BROKER_URL") or f"sqla+sqlite:///{(Path(PY_DIR) / 'celery-broker.sqlite3').as_posix()}",
+        )
     processes = []
-    reload_directory = tempfile.TemporaryDirectory(prefix="template-django-reload-") if not IS_WINDOWS else None
+    reload_directory = (
+        tempfile.TemporaryDirectory(prefix="template-django-reload-")
+        if django_enabled and frontend_enabled and not IS_WINDOWS else None
+    )
     reload_trigger = Path(reload_directory.name) / "frontend-reload" if reload_directory else None
     
     def start_process(command, cwd, env_updates=None):
@@ -192,10 +235,11 @@ def run_parallel(args, envs):
             {"DJANGO_RELOAD_TRIGGER": str(reload_trigger)} if reload_trigger else None,
         )
 
-    master_icons_mtime = file_mtime(MASTER_ICONS_SVG)
+    watch_icons = frontend_enabled and os.path.isfile(MASTER_ICONS_SVG) and os.path.isfile(ICON_GENERATOR)
+    master_icons_mtime = file_mtime(MASTER_ICONS_SVG) if watch_icons else None
     build_icons_at = None
     try:
-        django_process = start_django()
+        django_process = start_django() if django_enabled else None
         if reload_trigger:
             deadline = time.monotonic() + 15
             while not reload_trigger.exists():
@@ -205,34 +249,40 @@ def run_parallel(args, envs):
                 if time.monotonic() >= deadline:
                     raise SystemExit("❌ Django's frontend reload handler did not become ready.")
                 time.sleep(0.05)
-        start_process(
-            ["npm", "run", "dev", "--", "--host", host, "--port", str(ports["RSBUILD_PORT"]), *args],
-            TS_DIR,
-            {"DJANGO_PID": str(django_process.pid)} if reload_trigger else None,
-        )
-        for directory, port_name in (
-            (TS_BACKEND_DIR, "TS_BACKEND_PORT"),
-            (TS_WS_BACKEND_DIR, "TS_WS_BACKEND_PORT"),
+        if frontend_enabled:
+            start_process(
+                ["npm", "run", "dev", "--", "--host", host, "--port", str(ports["RSBUILD_PORT"]), *args],
+                TS_DIR,
+                {"DJANGO_PID": str(django_process.pid)} if reload_trigger else None,
+            )
+        for enabled, directory, port_name in (
+            (backend_enabled, TS_BACKEND_DIR, "TS_BACKEND_PORT"),
+            (ws_enabled, TS_WS_BACKEND_DIR, "TS_WS_BACKEND_PORT"),
         ):
+            if not enabled:
+                continue
             start_process(
                 ["npm", "run", "dev"],
                 directory,
                 {"HOST": host, "PORT": str(ports[port_name])},
             )
-        start_process(
-            [
-                VENV_PYTHON, "-m", "celery", "--app=template", "worker",
-                "--loglevel=INFO", "--pool=solo", "--concurrency=1",
-                "--without-gossip", "--without-mingle", "--without-heartbeat",
-            ],
-            PY_DIR,
-        )
+        if django_enabled:
+            start_process(
+                [
+                    VENV_PYTHON, "-m", "celery", "--app=template", "worker",
+                    "--loglevel=INFO", "--pool=solo", "--concurrency=1",
+                    "--without-gossip", "--without-mingle", "--without-heartbeat",
+                ],
+                PY_DIR,
+            )
         while True:
             time.sleep(0.5)
             for process in processes:
                 returncode = process.poll()
                 if returncode is not None:
                     raise SystemExit(returncode or 1)
+            if not watch_icons:
+                continue
             latest_master_icons_mtime = file_mtime(MASTER_ICONS_SVG)
             if latest_master_icons_mtime > master_icons_mtime:
                 master_icons_mtime = latest_master_icons_mtime

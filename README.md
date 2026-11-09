@@ -11,10 +11,14 @@ playground, Pages app, custom styles, fonts, and decorative images are removed.
 
 ## Development
 
-Run Django, Rsbuild, both TypeScript backends and a Celery worker together with
-`python run.py parallel`. The web services bind to `127.0.0.1` on
-ports 8000, 3000, 8001 and 8002 respectively. `python run.py setup` installs
-dependencies for all four projects. Override the host and ports, for example:
+Run the projects present in the checkout with `python run.py parallel`.
+`python run.py setup` likewise installs dependencies only for existing project
+directories. Remove any of the TypeScript project directories to omit that
+component; removing `django-project/` omits both Django and Celery. Django and
+its Celery worker always start together in parallel mode.
+
+With all components present, the web services bind to `127.0.0.1` on
+ports 8000, 3000, 8001 and 8002 respectively. Override the host and ports, for example:
 
 ```sh
 python run.py parallel HOST=0.0.0.0 DJANGO_PORT=8100 RSBUILD_PORT=3100 TS_BACKEND_PORT=8101 TS_WS_BACKEND_PORT=8102
@@ -22,7 +26,7 @@ python run.py parallel HOST=0.0.0.0 DJANGO_PORT=8100 RSBUILD_PORT=3100 TS_BACKEN
 
 Rsbuild watches and rebuilds frontend assets; both backends use `tsx watch` to
 reload TypeScript and restart on source changes. Django's development server
-reloads Python changes. Press Ctrl+C to stop all five, including their child
+reloads Python changes. Press Ctrl+C to stop all running services, including their child
 processes. If a dev runner exits, the launcher stops the other services and
 exits with a failure status.
 
@@ -53,14 +57,18 @@ which the launcher sets after starting Django first. Django's dev-only signal
 handler touches an autoreloader-watched file: the serving child restarts while
 the parent PID remains stable. The first compilation and failed builds do not
 signal Django. This Unix-only hook is disabled for standalone Rsbuild, Windows
-and production builds; parallel mode does not support `--noreload`.
+and production builds. Parallel mode requires Django's autoreloader only when
+both Django and the frontend are present; Django without frontend accepts
+`--noreload`.
 
 Changes to `assets/master_icons.svg` regenerate
 `typescript-frontend/src/icons.ts` automatically; unchanged generated output
 is not rewritten. Thus, a manual icon generation run restarts Django only when
-Rsbuild emits a changed bundle.
+Rsbuild emits a changed bundle. Icon watching is skipped when the frontend,
+master SVG, or generator is absent.
 
-All four ports must be different and between 1 and 65535. `HOST` controls where
+Ports for present components must be different and between 1 and 65535;
+assignments for absent components are ignored. `HOST` controls where
 all services listen; use
 `PUBLIC_HOST` when it differs from the address opened in a browser. For
 example, to bind on all interfaces while accessing the application from the
@@ -95,6 +103,27 @@ the normal CSRF token; CORS does not bypass CSRF protection. In parallel mode, u
 the environment assignments instead of passing shared `--host`, `--port`, or
 `--addrport` arguments. The TypeScript starters do not enable cross-origin HTTP
 access automatically.
+
+### Django without frontend
+
+Removing `typescript-frontend/` automatically disables Django's frontend
+integration. Its page and admin still work, and `collectstatic` still collects
+Django/admin assets without needing a frontend build. Alternatively, set
+`DJANGO_FRONTEND_ENABLED=false` to disable asset integration while keeping the
+directory. When frontend integration is enabled, a missing manifest still
+raises the usual build/dev-server error.
+
+For code deployment, select Django without frontend explicitly:
+
+```yaml
+app_django_enabled: true
+app_frontend_enabled: false
+```
+
+The Ansible code deployment pairs the Celery worker with Django; Beat remains
+optional. Deployment component switches remain explicit rather than inferred
+from deleted directories. Parallel mode leaves absent backends' generated URLs
+empty; explicit URLs for externally hosted services still work.
 
 ## Standalone frontend HTML
 

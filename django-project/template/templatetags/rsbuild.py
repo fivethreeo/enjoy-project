@@ -25,6 +25,8 @@ def rsbuild_entry(name='index'):
     The manifest is used in dev as well as in production; only the base URL
     differs (RSBUILD_BASE_URL points at the dev server in dev).
     """
+    if not settings.FRONTEND_ENABLED:
+        return ''
     try:
         initial = _load_manifest()['entries'][name]['initial']
     except (OSError, KeyError) as e:

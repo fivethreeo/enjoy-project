@@ -59,11 +59,15 @@ elif not DEBUG:
     raise ImproperlyConfigured('DJANGO_DATABASE_NAME must be set when DEBUG is off')
 
 # In dev, assets are served by the Rsbuild dev server; the manifest is still used.
+FRONTEND_ENABLED = env_bool(
+    'DJANGO_FRONTEND_ENABLED',
+    (Path(__file__).resolve().parent.parent.parent / 'typescript-frontend').is_dir(),
+)
 RSBUILD_BASE_URL = os.environ.get(
     'RSBUILD_BASE_URL', 'http://localhost:3000' if DEBUG else '/static'
 )
-_cors_defaults = ['http://localhost:3000', 'http://127.0.0.1:3000'] if DEBUG else []
-if DEBUG:
+_cors_defaults = ['http://localhost:3000', 'http://127.0.0.1:3000'] if DEBUG and FRONTEND_ENABLED else []
+if DEBUG and FRONTEND_ENABLED:
     _frontend_url = urlsplit(RSBUILD_BASE_URL)
     if _frontend_url.scheme in ('http', 'https') and _frontend_url.netloc:
         _frontend_origin = f'{_frontend_url.scheme}://{_frontend_url.netloc}'

@@ -17,6 +17,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ImproperlyConfigured
 from django.core.cache.backends.memcached import PyMemcacheCache
+from django.template import TemplateSyntaxError
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import get_script_prefix, reverse, set_script_prefix
 
@@ -28,6 +29,36 @@ from .tasks import notify
 @shared_task
 def runtime_test_task(value):
     return value.upper()
+
+
+class OptionalFrontendTests(SimpleTestCase):
+    @override_settings(FRONTEND_ENABLED=False, RSBUILD_MANIFEST='/missing/manifest.json')
+    def test_django_page_renders_without_reading_a_disabled_frontend_manifest(self):
+        with patch('template.templatetags.rsbuild._load_manifest') as load_manifest:
+            response = self.client.get('/')
+        self.assertContains(response, '<h1>Template Django</h1>', html=True)
+        self.assertNotContains(response, '<script')
+        self.assertNotContains(response, 'rel="stylesheet"')
+        load_manifest.assert_not_called()
+
+    @override_settings(FRONTEND_ENABLED=True, RSBUILD_MANIFEST='/missing/manifest.json')
+    def test_enabled_frontend_still_requires_a_built_manifest(self):
+        with self.assertRaisesMessage(TemplateSyntaxError, 'dev server or build first'):
+            self.client.get('/')
+
+    def test_enabled_frontend_still_emits_production_assets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / 'manifest.json'
+            manifest.write_text(json.dumps({'entries': {'index': {'initial': {
+                'js': ['/static/js/index.js'], 'css': ['/static/css/index.css'],
+            }}}}))
+            with override_settings(
+                FRONTEND_ENABLED=True, RSBUILD_MANIFEST=manifest,
+                RSBUILD_BASE_URL='/template/static/',
+            ):
+                response = self.client.get('/')
+        self.assertContains(response, '<script defer src="/template/static/static/js/index.js"></script>', html=True)
+        self.assertContains(response, '<link rel="stylesheet" href="/template/static/static/css/index.css">', html=True)
 
 
 class RuntimeSettingsTests(SimpleTestCase):
@@ -74,8 +105,22 @@ class RuntimeSettingsTests(SimpleTestCase):
     def test_unconfigured_development_keeps_base_sqlite_database(self):
         self.assertNotIn('DATABASES', self.configuration())
 
+    def test_frontend_defaults_to_directory_presence_and_can_be_overridden(self):
+        for present in (False, True):
+            with self.subTest(present=present), patch.object(Path, 'is_dir', return_value=present):
+                config = self.configuration()
+                self.assertEqual(config['FRONTEND_ENABLED'], present)
+                if not present:
+                    self.assertEqual(config['CORS_ALLOWED_ORIGINS'], [])
+                for value, expected in [('false', False), ('true', True)]:
+                    config = self.configuration({'DJANGO_FRONTEND_ENABLED': value})
+                    self.assertEqual(config['FRONTEND_ENABLED'], expected)
+
     def test_development_cors_allows_loopback_and_configured_frontend_origin(self):
-        config = self.configuration({'RSBUILD_BASE_URL': 'http://192.0.2.10:3300/assets/'})
+        config = self.configuration({
+            'DJANGO_FRONTEND_ENABLED': 'true',
+            'RSBUILD_BASE_URL': 'http://192.0.2.10:3300/assets/',
+        })
         self.assertEqual(config['CORS_ALLOWED_ORIGINS'], [
             'http://localhost:3000', 'http://127.0.0.1:3000', 'http://192.0.2.10:3300',
         ])

@@ -1,4 +1,5 @@
 import contextlib
+from itertools import product
 import signal
 import subprocess
 import unittest
@@ -14,7 +15,8 @@ class ParallelTests(unittest.TestCase):
         stack.enter_context(patch.object(run, "IS_WINDOWS", False))
         stack.enter_context(patch.object(run, "active_processes", []))
         stack.enter_context(patch.dict(run.os.environ, {}, clear=True))
-        stack.enter_context(patch.object(run, "file_mtime", return_value=1))
+        stack.enter_context(patch.object(run.os.path, "isdir", return_value=True))
+        self.file_mtime = stack.enter_context(patch.object(run, "file_mtime", return_value=1))
         stack.enter_context(patch.object(run.Path, "exists", return_value=True))
         stack.enter_context(patch("builtins.print"))
         self.sleep = stack.enter_context(patch.object(run.time, "sleep", side_effect=KeyboardInterrupt))
@@ -192,6 +194,90 @@ class ParallelTests(unittest.TestCase):
             command.call_args_list[:3],
             [call(["npm", "install"], cwd=directory) for directory in (run.TS_DIR, run.TS_BACKEND_DIR, run.TS_WS_BACKEND_DIR)],
         )
+
+    def test_setup_installs_only_present_projects_for_every_directory_combination(self):
+        directories = (run.PY_DIR, run.TS_DIR, run.TS_BACKEND_DIR, run.TS_WS_BACKEND_DIR)
+        for enabled in product((False, True), repeat=4):
+            present = {directory for directory, exists in zip(directories, enabled) if exists}
+            with (
+                self.subTest(enabled=enabled),
+                patch.object(run.os.path, "isdir", side_effect=lambda path: path in present),
+                patch.object(run, "run_command") as command,
+                patch.object(run.subprocess, "run") as create_venv,
+            ):
+                run.setup()
+                expected = [
+                    call(["npm", "install"], cwd=directory)
+                    for directory in directories[1:] if directory in present
+                ]
+                if run.PY_DIR in present:
+                    expected.append(call([run.VENV_PIP, "install", "-r", "requirements.txt"], cwd=run.PY_DIR))
+                    create_venv.assert_called_once_with(
+                        [run.sys.executable, "-m", "venv", run.os.path.join(run.PY_DIR, ".venv")], check=True,
+                    )
+                else:
+                    create_venv.assert_not_called()
+                self.assertEqual(command.call_args_list, expected)
+
+    def test_parallel_runs_only_present_projects_and_pairs_celery_with_django(self):
+        directories = (run.PY_DIR, run.TS_DIR, run.TS_BACKEND_DIR, run.TS_WS_BACKEND_DIR)
+        for enabled in product((False, True), repeat=4):
+            present = {directory for directory, exists in zip(directories, enabled) if exists}
+            self.popen.reset_mock()
+            self.popen.side_effect = self.processes
+            self.killpg.reset_mock()
+            with self.subTest(enabled=enabled), patch.object(
+                run.os.path, "isdir", side_effect=lambda path: path in present,
+            ):
+                if not present:
+                    with self.assertRaisesRegex(SystemExit, "No project directories"):
+                        run.run_parallel([], {})
+                    self.popen.assert_not_called()
+                    continue
+                run.run_parallel([], {})
+                launches = self.popen.call_args_list
+                expected = [directory for directory in directories if directory in present]
+                if run.PY_DIR in present:
+                    expected.append(run.PY_DIR)
+                    self.assertIn("celery", launches[-1].args[0])
+                self.assertEqual([launch.kwargs["cwd"] for launch in launches], expected)
+                self.assertEqual(
+                    self.killpg.call_args_list,
+                    [call(process.pid, signal.SIGTERM) for process in self.processes[:len(expected)]],
+                )
+                if run.TS_DIR in present and run.PY_DIR not in present:
+                    self.assertNotIn("DJANGO_PID", launches[0].kwargs["env"])
+                    self.assertEqual(launches[0].kwargs["env"]["DJANGO_INTERNAL_URL"], "")
+
+    def test_absent_components_have_no_default_urls_and_their_ports_are_ignored(self):
+        with patch.object(run.os.path, "isdir", side_effect=lambda path: path == run.PY_DIR):
+            run.run_parallel(["--noreload"], {
+                "DJANGO_PORT": "3000", "RSBUILD_PORT": "3000",
+                "TS_BACKEND_PORT": "invalid", "TS_WS_BACKEND_PORT": "0",
+            })
+        self.assertEqual(self.popen.call_count, 2)
+        environment = self.popen.call_args_list[0].kwargs["env"]
+        for name in ("DJANGO_TS_BACKEND_URL", "DJANGO_TS_WS_BACKEND_URL", "WS_INTERNAL_URL"):
+            self.assertEqual(environment[name], "")
+        self.assertNotIn("DJANGO_RELOAD_TRIGGER", environment)
+        self.assertNotIn("RSBUILD_BASE_URL", environment)
+        self.file_mtime.assert_not_called()
+
+    def test_external_service_url_overrides_survive_absent_directories(self):
+        with (
+            patch.object(run.os.path, "isdir", side_effect=lambda path: path == run.TS_DIR),
+            patch.dict(run.os.environ, {"DJANGO_INTERNAL_URL": "http://django.internal/"}),
+        ):
+            run.run_parallel([], {"WS_INTERNAL_URL": "http://ws.internal/"})
+        environment = self.popen.call_args.kwargs["env"]
+        self.assertEqual(environment["DJANGO_INTERNAL_URL"], "http://django.internal/")
+        self.assertEqual(environment["WS_INTERNAL_URL"], "http://ws.internal/")
+
+    def test_missing_icon_assets_do_not_prevent_running_the_frontend(self):
+        with patch.object(run.os.path, "isfile", return_value=False):
+            run.run_parallel([], {})
+        self.assertEqual(self.popen.call_count, 5)
+        self.file_mtime.assert_not_called()
 
 
 if __name__ == "__main__":

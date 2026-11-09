@@ -127,7 +127,6 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # production reads the copy collected into STATIC_ROOT (see local_settings.py)
 RSBUILD_MANIFEST = BASE_DIR.parent / 'typescript-frontend' / 'dist' / 'manifest.json'
 RSBUILD_BASE_URL = '/static'
-STATICFILES_DIRS = [BASE_DIR.parent / 'typescript-frontend' / 'dist']
 
 
 # Email
@@ -142,6 +141,9 @@ MAILERS = {
 
 # Runtime configuration must load successfully, including in production.
 from .local_settings import *  # noqa: F401,F403
+
+_frontend_dist = BASE_DIR.parent / 'typescript-frontend' / 'dist'
+STATICFILES_DIRS = [_frontend_dist] if FRONTEND_ENABLED and _frontend_dist.is_dir() else []
 
 if not DEBUG or CORS_ALLOWED_ORIGINS:
     INSTALLED_APPS.insert(-1, 'corsheaders')
