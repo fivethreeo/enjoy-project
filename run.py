@@ -136,6 +136,10 @@ def run_parallel(args, envs):
         os.environ.get("DJANGO_INTERNAL_URL", f"http://{internal_url_host}:{ports['DJANGO_PORT']}/"),
     )
     parallel_envs.setdefault(
+        "WS_INTERNAL_URL",
+        os.environ.get("WS_INTERNAL_URL", f"http://{internal_url_host}:{ports['TS_WS_BACKEND_PORT']}/"),
+    )
+    parallel_envs.setdefault(
         "WS_ALLOWED_ORIGINS",
         os.environ.get(
             "WS_ALLOWED_ORIGINS",

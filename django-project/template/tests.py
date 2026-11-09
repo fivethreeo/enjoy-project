@@ -1,11 +1,17 @@
 import os
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import io
+import json
 from pathlib import Path
 import runpy
 import signal
 import tempfile
+from threading import Thread
+from urllib.error import HTTPError, URLError
 from unittest.mock import Mock, patch
 
 from celery import Celery, shared_task
+from celery.exceptions import Retry
 from django.apps import apps
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -16,6 +22,7 @@ from django.urls import get_script_prefix, reverse, set_script_prefix
 
 from .celery import app
 from .models import Job
+from .tasks import notify
 
 
 @shared_task
@@ -234,6 +241,121 @@ class CeleryIntegrationTests(SimpleTestCase):
         self.assertEqual(result.get(), 'TEMPLATE')
 
 
+@override_settings(
+    WS_INTERNAL_URL='http://127.0.0.1:8002/',
+    WS_INTERNAL_NOTIFY_TOKEN='test-only-notify',
+)
+class NotificationTaskTests(SimpleTestCase):
+    def setUp(self):
+        self.transport_patch = patch('template.tasks._opener.open')
+        self.transport = self.transport_patch.start()
+        self.addCleanup(self.transport_patch.stop)
+        self.transport.return_value.__enter__.return_value.status = 202
+
+    def test_chained_notification_authenticates_and_preserves_the_work_result(self):
+        result = (runtime_test_task.s('done') | notify.s(42, 'work.finished')).apply().get()
+        self.assertEqual(result, 'DONE')
+        request = self.transport.call_args.args[0]
+        self.assertEqual(request.full_url, 'http://127.0.0.1:8002/internal/notify/')
+        self.assertEqual(request.get_method(), 'POST')
+        self.assertEqual(request.get_header('Authorization'), 'Bearer test-only-notify')
+        self.assertEqual(request.get_header('Content-type'), 'application/json')
+        self.assertEqual(json.loads(request.data), {
+            'user_id': 42, 'event': 'work.finished', 'result': 'DONE',
+        })
+        self.assertEqual(self.transport.call_args.kwargs['timeout'], 5)
+
+    def test_missing_sender_configuration_skips_delivery_and_warns_only_at_startup(self):
+        for missing in ['WS_INTERNAL_URL', 'WS_INTERNAL_NOTIFY_TOKEN']:
+            with self.subTest(missing=missing), override_settings(
+                INTERNAL_AUTH_TOKEN='test-only-auth', **{missing: ''},
+            ):
+                with self.assertLogs('template.apps', level='WARNING') as logs:
+                    apps.get_app_config('template').ready()
+                    self.assertEqual(notify.run('done', 42), 'done')
+                    self.assertEqual(notify.run('done', 42), 'done')
+                self.assertEqual(len(logs.output), 1)
+                self.assertIn('Celery WebSocket notifications are disabled', logs.output[0])
+        self.transport.assert_not_called()
+
+    def test_transient_network_and_http_failures_retry(self):
+        errors = [URLError('unavailable'), TimeoutError('timed out')]
+        errors += [
+            HTTPError('http://127.0.0.1:8002/internal/notify/', code, 'temporary', {}, io.BytesIO())
+            for code in [429, 500, 503]
+        ]
+        for error in errors:
+            with self.subTest(error=error):
+                self.transport.side_effect = error
+                with patch.object(notify, 'retry', side_effect=Retry()) as retry:
+                    with self.assertRaises(Retry):
+                        notify.run('done', 42)
+                retry.assert_called_once_with(exc=error, countdown=1)
+
+    def test_permanent_http_failures_do_not_retry(self):
+        for code in [400, 403, 404, 413]:
+            error = HTTPError(
+                'http://127.0.0.1:8002/internal/notify/', code, 'rejected', {}, io.BytesIO(),
+            )
+            with self.subTest(code=code), patch.object(notify, 'retry') as retry:
+                self.transport.side_effect = error
+                with self.assertRaises(HTTPError):
+                    notify.run('done', 42)
+                retry.assert_not_called()
+
+    def test_invalid_or_oversized_notifications_are_rejected_before_delivery(self):
+        for result, user_id, event in [
+            ('done', 0, 'work.finished'), ('done', True, 'work.finished'),
+            ('done', 2**53, 'work.finished'), ('done', '', 'work.finished'),
+            ('done', 42, ''), ('x' * 65536, 42, 'work.finished'),
+            (float('nan'), 42, 'work.finished'),
+        ]:
+            with self.subTest(user_id=user_id, event=event), self.assertRaises(ValueError):
+                notify.run(result, user_id, event)
+        self.transport.assert_not_called()
+
+    def test_unexpected_success_response_is_not_accepted(self):
+        self.transport.return_value.__enter__.return_value.status = 200
+        with patch.object(notify, 'retry') as retry, self.assertRaises(ValueError):
+            notify.run('done', 42)
+        retry.assert_not_called()
+
+    def test_redirects_are_not_followed_with_service_credentials(self):
+        self.transport_patch.stop()
+        requests = []
+
+        class RedirectHandler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                requests.append(self.path)
+                self.rfile.read(int(self.headers.get('Content-Length', 0)))
+                self.send_response(302)
+                self.send_header('Location', '/redirect-target')
+                self.send_header('Content-Length', '0')
+                self.end_headers()
+
+            def do_GET(self):
+                requests.append(self.path)
+                self.send_response(202)
+                self.end_headers()
+
+            def log_message(self, format, *args):
+                pass
+
+        server = ThreadingHTTPServer(('127.0.0.1', 0), RedirectHandler)
+        thread = Thread(target=server.serve_forever)
+        thread.start()
+        try:
+            with override_settings(WS_INTERNAL_URL=f'http://127.0.0.1:{server.server_port}/'):
+                with self.assertRaises(HTTPError) as error:
+                    notify.run('done', 42)
+                self.assertEqual(error.exception.code, 302)
+            self.assertEqual(requests, ['/internal/notify/'])
+        finally:
+            server.shutdown()
+            thread.join()
+            server.server_close()
+
+
 class DjangoMountTests(SimpleTestCase):
     @override_settings(FORCE_SCRIPT_NAME='/django')
     def test_homepage_and_admin_respect_the_mount_prefix(self):
@@ -374,7 +496,11 @@ class JobResultsTests(TestCase):
         self.assertEqual(response.json(), {'error': 'Unable to encode task results'})
 
 
-@override_settings(INTERNAL_AUTH_TOKEN='test-only-service-token')
+@override_settings(
+    INTERNAL_AUTH_TOKEN='test-only-service-token',
+    WS_INTERNAL_URL='http://127.0.0.1:8002/',
+    WS_INTERNAL_NOTIFY_TOKEN='test-only-notify',
+)
 class InternalAuthenticationTests(TestCase):
     @classmethod
     def setUpTestData(cls):

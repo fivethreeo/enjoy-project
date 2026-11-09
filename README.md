@@ -96,6 +96,41 @@ the environment assignments instead of passing shared `--host`, `--port`, or
 `--addrport` arguments. The TypeScript starters do not enable cross-origin HTTP
 access automatically.
 
+## Standalone frontend HTML
+
+Edit `typescript-frontend/src/index.html` for a page served without Django.
+Rsbuild generates `dist/index.html` and inserts the built CSS and JavaScript
+automatically; Django continues to use its own template.
+
+For frontend deployment at `/template/` with assets at `/template/static/`, build
+from the repository root with the matching asset prefix:
+
+```sh
+RSBUILD_ASSET_PREFIX=/template/static/ python3 run.py npm run build
+```
+
+In the Ansible application configuration:
+
+```yaml
+app_django_enabled: false
+app_frontend_enabled: true
+app_frontend_html_location: /template/
+app_static_location: /template/static/
+celery_enabled: false
+celery_beat_enabled: false
+```
+
+HTML serving defaults to enabled when frontend is enabled without Django.
+Set `app_frontend_html_enabled: false` for assets only, with HTML hosted
+elsewhere. The page location defaults to `app_django_location`; this does not
+enable Django. The standalone page has no automatic Django context or backend
+URL data attributes, and unknown page paths return 404 rather than an SPA fallback.
+
+To update only frontend on an existing application without restarting its
+backends, use the Ansible code playbook with `app_frontend_only_update: true`
+and the application's existing configuration. This also enables the built HTML
+by default, while retaining nested Django admin, media, API and WebSocket routes.
+
 ## Independent TypeScript backends
 
 The repository has four sibling project directories:
@@ -245,6 +280,34 @@ do not receive it.
 The response is `202 {"matched_connections": ...}`, including zero when the
 user is offline. This counts matched sockets, not browser acknowledgements.
 Notifications are not persisted or deduplicated; retries can deliver duplicates.
+
+`template.tasks.notify(result, user_id, event='task.finished')` is a Celery
+sender task. Configure `WS_INTERNAL_URL` as the private WS HTTP base URL,
+for example `http://127.0.0.1:8002/`, and set the same
+`WS_INTERNAL_NOTIFY_TOKEN` in Django/Celery and the WS process. `parallel`
+supplies the private URL using the configured WS port; it does not generate
+or copy a token from Django's `.env` into Node.
+
+```python
+from celery import chain
+from template.tasks import notify
+
+# work is your existing Celery task; its result becomes notify's first argument.
+chain(work.s(), notify.s(request.user.pk, 'work.finished')).apply_async()
+```
+
+Only successful work triggers the notification. The sender returns the original
+result and accepts HTTP 202 even when no sockets are connected. Network failures,
+HTTP 429 and HTTP 5xx retry up to five times with exponential delays; redirects,
+other HTTP failures and invalid/oversized payloads do not retry. Redirects and
+environment proxies are disabled so private service credentials stay on the
+configured destination. Missing URL/token disables delivery, returns the original
+result, and logs a startup warning rather than warning for every task.
+
+Ansible forwards this private URL and token to Django/Celery and the TS HTTP
+backend when WS is enabled. These values are server-only and are not added to
+the frontend or page data attributes. The HTTP starter does not send notifications
+automatically.
 
 ## Runtime configuration and production
 

@@ -90,6 +90,8 @@ FORCE_SCRIPT_NAME = os.environ.get('DJANGO_SCRIPT_NAME') or None
 TS_BACKEND_URL = os.environ.get('DJANGO_TS_BACKEND_URL', '').strip()
 TS_WS_BACKEND_URL = os.environ.get('DJANGO_TS_WS_BACKEND_URL', '').strip()
 INTERNAL_AUTH_TOKEN = os.environ.get('DJANGO_INTERNAL_AUTH_TOKEN', '')
+WS_INTERNAL_URL = os.environ.get('WS_INTERNAL_URL', '').strip()
+WS_INTERNAL_NOTIFY_TOKEN = os.environ.get('WS_INTERNAL_NOTIFY_TOKEN', '')
 
 _memcached_location = os.environ.get('DJANGO_MEMCACHED_LOCATION', '').strip()
 if _memcached_location:

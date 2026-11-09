@@ -36,6 +36,12 @@ export default defineConfig(({ env }) => {
   output: {
     manifest: true,
     filenameHash: !isDevelopment,
+    ...(!isDevelopment && process.env.RSBUILD_ASSET_PREFIX
+      ? { assetPrefix: process.env.RSBUILD_ASSET_PREFIX }
+      : {}),
+  },
+  html: {
+    template: './src/index.html',
   },
   splitChunks: isDevelopment ? false : undefined,
   source: {
