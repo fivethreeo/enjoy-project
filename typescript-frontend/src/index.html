@@ -1,14 +1,123 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="nb">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Template</title>
+    <meta name="theme-color" content="#a63b2e">
+    <meta name="description" content="Opplev Thailand med Enjoy Thai Cooking. Varme møter, gylne templer og gleden ved å ta livet med ro.">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23a63b2e'/%3E%3Ctext x='32' y='47' text-anchor='middle' font-family='Georgia,serif' font-size='52' fill='%23fff8e9'%3Ee%3C/text%3E%3C/svg%3E">
+    <title>Enjoy Thai Cooking</title>
   </head>
   <body>
     <div id="root">
-      <h1>Template frontend</h1>
-      <p>This page is built by Rsbuild and served directly by Nginx.</p>
+      <a class="skip-link" href="#main-content">Hopp til innhold</a>
+      <div class="cover-image" aria-hidden="true"></div>
+
+      <header class="site-header">
+        <nav class="navigation" aria-label="Hovedmeny">
+          <a class="wordmark" href="#top" aria-label="Enjoy Thai Cooking, hjem">
+            <img src="./assets/enjoy-logo.svg" alt="Enjoy Thai Cooking" width="2171" height="789">
+          </a>
+          <div class="navigation-links">
+            <a href="#discover">Oppdag</a>
+            <a href="#moments">Små øyeblikk</a>
+            <a href="#our-story">Vår historie</a>
+          </div>
+          <a class="navigation-invitation" href="#moments">
+            Finn ditt øyeblikk <span aria-hidden="true">&nearr;</span>
+          </a>
+        </nav>
+      </header>
+
+      <section class="hero-cover" id="top" aria-labelledby="cover-title">
+        <div class="cover-content">
+          <h1 id="cover-title">
+            <img class="hero-logo" src="./assets/enjoy-logo.svg" alt="Enjoy Thai Cooking" width="2171" height="789">
+          </h1>
+          <p class="cover-caption">Vakre steder. Varme mennesker. Små gleder.</p>
+        </div>
+        <a class="cover-scroll" href="#discover">
+          Ta en liten titt
+          <span class="scroll-line" aria-hidden="true"></span>
+        </a>
+      </section>
+
+      <main class="ornate-frame" id="main-content" tabindex="-1">
+        <div class="patterned-surround">
+          <article class="document">
+            <section class="introduction" id="discover" aria-labelledby="welcome-title">
+              <p class="eyebrow">Velkommen til Enjoy</p>
+              <h2 id="welcome-title">Noen steder besøker du.<br>Andre <em>blir med deg videre.</em></h2>
+              <p class="introduction-copy">
+                Duften av sjasmin en varm kveld. Et gyllent tempeltak i
+                morgenlyset. Et smil som ikke trenger oversettelse.
+                I Thailand kan selv de minste øyeblikk føles helt spesielle.
+              </p>
+              <a class="text-link" href="#moments">Oppdag de små tingene <span aria-hidden="true">&rarr;</span></a>
+            </section>
+
+            <div class="ornamental-divider" aria-hidden="true">
+              <span></span>
+              <svg class="lotus" viewBox="0 0 64 48" fill="none">
+                <path d="M32 40C13 30 18 15 32 4c14 11 19 26 0 36Z"/>
+                <path d="M32 40C14 42 5 31 5 17c16 0 25 8 27 23Zm0 0c18 2 27-9 27-23-16 0-25 8-27 23ZM14 44h36"/>
+              </svg>
+              <span></span>
+            </div>
+
+            <section class="moments" id="moments" aria-labelledby="moments-title">
+              <div class="section-heading">
+                <p class="eyebrow">Ingen grunn til å skynde seg</p>
+                <h2 id="moments-title">Finn det som <em>begeistrer deg.</em></h2>
+              </div>
+              <div class="moments-grid">
+                <section class="moment">
+                  <span class="moment-number" aria-hidden="true">01</span>
+                  <p class="moment-category">Utforsk</p>
+                  <h3>Følg det gylne lyset.</h3>
+                  <p>Stille tempelgårder, smale gater i gamlebyen og små
+                    oppdagelser rundt neste hjørne. Ta deg tid til å gå deg litt bort.</p>
+                </section>
+                <section class="moment">
+                  <span class="moment-number" aria-hidden="true">02</span>
+                  <p class="moment-category">Nyt</p>
+                  <h3>En smak av noe nytt.</h3>
+                  <p>Frokost på markedet. Noe som freser på et gatehjørne.
+                    Søt mango med klebrig ris. De beste minnene begynner ofte rundt et bord.</p>
+                </section>
+                <section class="moment">
+                  <span class="moment-number" aria-hidden="true">03</span>
+                  <p class="moment-category">Bare vær</p>
+                  <h3>La dagen komme som den vil.</h3>
+                  <p>Lange morgener, bare føtter og ingen steder du må være.
+                    Noen ganger er den beste planen å ikke ha noen plan.</p>
+                </section>
+              </div>
+            </section>
+
+            <section class="our-story" id="our-story" aria-labelledby="story-title">
+              <p class="eyebrow">Alltid en varm velkomst</p>
+              <h2 id="story-title">Senk tempoet.<br>Kjenn på <em>gleden.</em></h2>
+              <p>Enjoy er en liten hyllest til Thailand og alt som gjør landet
+                spesielt. Ikke en liste over steder du må se, men en invitasjon
+                til å senke tempoet, se litt nærmere og føle deg hjemme på et nytt sted.</p>
+              <span class="story-signature">Det er ekte glede.</span>
+            </section>
+
+            <footer class="document-footer">
+              <a class="wordmark" href="#top" aria-label="Enjoy Thai Cooking, til toppen">
+                <img src="./assets/enjoy-logo.svg" alt="Enjoy Thai Cooking" width="2171" height="789" loading="lazy">
+              </a>
+              <p>Litt Thailand. Mye hjertevarme.</p>
+              <p class="photo-credit">
+                <a href="https://images.unsplash.com/photo-1528181304800-259b08848526">Thailand-bilde fra Unsplash</a>
+                <span aria-hidden="true">&middot;</span>
+                <a href="https://unsplash.com/license">Bildelisens</a>
+              </p>
+            </footer>
+          </article>
+        </div>
+      </main>
     </div>
   </body>
 </html>

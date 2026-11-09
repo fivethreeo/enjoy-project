@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300" fill="none">
+  <defs>
+    <linearGradient id="gold" x1=".1" y1="0" x2=".8" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#926521"/>
+      <stop offset=".18" stop-color="#e4bd5e"/>
+      <stop offset=".34" stop-color="#fff0b0"/>
+      <stop offset=".48" stop-color="#dbb24e"/>
+      <stop offset=".66" stop-color="#a27327"/>
+      <stop offset=".83" stop-color="#f7df8a"/>
+      <stop offset="1" stop-color="#916023"/>
+    </linearGradient>
+    <linearGradient id="leaf-gold" x1="0" y1="0" x2="1" y2=".8">
+      <stop stop-color="#fff0ae"/>
+      <stop offset=".35" stop-color="#e7c56e"/>
+      <stop offset=".6" stop-color="#b58a36"/>
+      <stop offset=".82" stop-color="#f8df92"/>
+      <stop offset="1" stop-color="#9b6c27"/>
+    </linearGradient>
+    <path id="spine" d="M0 135c31-5 40-18 52-47 14-38 37-67 76-64 40 3 67 35 56 64-10 27-36 38-60 22-19-13-16-35-1-43 15-8 33-2 36 13-10-11-23-7-24 4-1 11 15 18 26 5 16-18-2-41-24-42-32-4-47 19-59 49-12 30-37 47-78 47Z"/>
+    <path id="counter-spine" d="M240 139c-37 3-64-6-76-30-10-19-9-45-30-59-20-14-50-6-52 18-2 18 13 32 27 23 13-8 9-24-4-22 8 1 11 8 6 12-8 9-18 0-14-12 4-14 24-14 35 0 16 19 5 47 31 64 21 18 55 17 77 10Z"/>
+    <path id="joining-vine" d="M0 145c40 0 56-51 98-44s50 92 104 88 58-77 110-82 61 69 107 65c32-3 41-27 61-27"/>
+    <path id="flame-leaf" d="M57 99C35 79 36 52 53 34c-5 17 6 20 10 31-3-23 16-34 18-55 17 26 6 49-5 64 18-13 31-12 41-26 0 25-20 49-41 53Z"/>
+    <path id="crest" d="M99 35c8-17 21-20 29-31 0 11 8 12 11 20 12-10 21-7 32-14-2 13-9 22-20 26 19-1 29 8 43 6-7 15-22 17-36 12-18-7-32-20-59-19Z"/>
+    <path id="trailing-leaf" d="M83 115c26 14 48 10 67-6 15-12 31-17 47-11-13 0-17 12-27 21 18-3 31-1 44-12-5 21-23 34-48 30-12-1-20-6-30-6-21 6-38 0-53-16Z"/>
+    <g id="scroll">
+      <use href="#flame-leaf" fill="url(#leaf-gold)" stroke="#8d6327" stroke-width="1.4"/>
+      <use href="#crest" fill="url(#leaf-gold)" stroke="#8d6327" stroke-width="1.4"/>
+      <use href="#spine" transform="translate(0 2)" fill="#482c0e" opacity=".7"/>
+      <use href="#spine" fill="url(#gold)" stroke="#82521c" stroke-width="1.5"/>
+      <path d="M3 135c38-7 48-32 62-62 17-36 45-46 71-39 34 8 49 37 31 57-13 15-34 17-44 1-7-11-1-22 9-23" stroke="#885a20" stroke-width="3.2" stroke-linecap="round"/>
+      <path d="M4 132c37-7 47-32 60-62 17-36 46-46 72-39 34 8 51 38 32 59-13 15-32 17-42 2" stroke="#fff0b5" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M17 139c34-5 47-25 59-52 14-32 30-44 52-43" stroke="#b28a38" stroke-width="1.2"/>
+      <use href="#trailing-leaf" fill="url(#leaf-gold)" stroke="#8d6327" stroke-width="1.4"/>
+      <path d="M62 95c-6-25 16-47 19-72M59 86C46 72 46 58 50 46M71 94c17-7 31-18 39-32M110 32c11-6 18-12 20-20m8 21c12-5 20-9 27-15m-12 25c12 5 23 5 32 3M95 120c29 13 43 4 63-10 10-7 19-10 28-10m-40 30c25-8 39 3 59-15" stroke="#fff0b1" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M65 94c-2-19 12-37 16-53M74 98c13-5 23-14 30-23m11-42 13-10m14 13 13-7M103 125c18 6 34 2 47-6m12 13c14-1 24-2 32-7" stroke="#9c7029" stroke-width="1.3" stroke-linecap="round"/>
+    </g>
+    <g id="counter-scroll">
+      <use href="#crest" transform="translate(220 0) scale(-1 1)" fill="url(#leaf-gold)" stroke="#8d6327" stroke-width="1.4"/>
+      <path d="M142 77c14-24 12-42 26-61-2 21 16 31 9 50 12-11 20-10 28-23-1 24-15 36-32 44 20 1 27 10 43 7-14 16-39 17-57 8Z" fill="url(#leaf-gold)" stroke="#8d6327" stroke-width="1.4"/>
+      <use href="#counter-spine" transform="translate(0 2)" fill="#482c0e" opacity=".7"/>
+      <use href="#counter-spine" fill="url(#gold)" stroke="#82521c" stroke-width="1.5"/>
+      <path d="M237 140c-42 1-65-11-74-38-8-26-12-47-36-54-24-7-45 8-39 29 4 14 19 18 25 6" stroke="#885a20" stroke-width="3.2" stroke-linecap="round"/>
+      <path d="M237 137c-42 1-64-11-73-38-8-26-13-47-37-54-24-7-47 10-40 31 4 14 18 20 25 7" stroke="#fff0b5" stroke-width="2.2" stroke-linecap="round"/>
+      <use href="#trailing-leaf" transform="translate(300 0) scale(-1 1)" fill="url(#leaf-gold)" stroke="#8d6327" stroke-width="1.4"/>
+      <path d="M157 85c15-20 1-42 10-61m-5 68c17-8 26-18 33-34m-29 40c16 0 29 4 39 1M112 32c-11-6-18-12-20-20m-8 21c-12-5-20-9-27-15m12 25c-12 5-23 5-32 3M205 120c-29 13-43 4-63-10-10-7-19-10-28-10m40 30c-25-8-39 3-59-15" stroke="#fff0b1" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M157 93c10-9 12-19 11-30m3 36 19-2M194 126c-20 3-34-4-47-10m-9 15c-13-2-23-1-33-6" stroke="#9c7029" stroke-width="1.3" stroke-linecap="round"/>
+    </g>
+    <g id="carved-edge">
+      <use href="#scroll"/>
+      <use href="#counter-scroll" transform="translate(240 0)"/>
+    </g>
+    <g id="seam-plume">
+      <path d="M-17 13c2-14 13-19 21-29 1 8 8 11 12 8C11 4 2 4-1 11c12-5 20 2 31-4-5 13-21 16-34 10-7 3-13 3-13-4Z" fill="url(#leaf-gold)" stroke="#82521c" stroke-width="1.3"/>
+      <path d="M-12 13C-7 2 3 0 6-7M-7 15c12-6 21 3 31-3" stroke="#fff0b1" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M-9 16c10-4 19 2 28-1" stroke="#9c7029" stroke-width="1.1"/>
+    </g>
+  </defs>
+  <use href="#joining-vine" stroke="#82521c" stroke-width="31"/>
+  <use href="#joining-vine" stroke="url(#leaf-gold)" stroke-width="28"/>
+  <use href="#joining-vine" transform="translate(0 -8)" stroke="#fff0b5" stroke-width="1.8"/>
+  <use href="#joining-vine" transform="translate(0 5)" stroke="#9c7029" stroke-width="1.5"/>
+  <path d="M335 119c16 1 9 32 25 43" stroke="#82521c" stroke-width="15"/>
+  <path d="M335 119c16 1 9 32 25 43" stroke="url(#gold)" stroke-width="12"/>
+  <path d="M333 117c16 1 9 32 25 43" stroke="#fff0b1" stroke-width="1.6"/>
+  <use href="#carved-edge" transform="translate(0 9)"/>
+  <use href="#carved-edge" transform="translate(-120 291) scale(1 -1)"/>
+  <use href="#carved-edge" transform="translate(360 291) scale(1 -1)"/>
+  <use href="#seam-plume" transform="translate(94 104) rotate(-16)"/>
+  <use href="#seam-plume" transform="translate(207 187) rotate(161)"/>
+  <use href="#seam-plume" transform="translate(310 110) rotate(22)"/>
+</svg>

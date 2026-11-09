@@ -36,6 +36,7 @@ export default defineConfig(({ env }) => {
   output: {
     manifest: true,
     filenameHash: !isDevelopment,
+    copy: [{ from: './src/assets/enjoy-logo.svg', to: 'assets/enjoy-logo.svg' }],
     ...(!isDevelopment && process.env.RSBUILD_ASSET_PREFIX
       ? { assetPrefix: process.env.RSBUILD_ASSET_PREFIX }
       : {}),

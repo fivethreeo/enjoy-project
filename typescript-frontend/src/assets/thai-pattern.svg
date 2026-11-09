@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="360" viewBox="0 0 320 360" fill="none">
+  <defs>
+    <linearGradient id="thread-gold" x1="-40" y1="-55" x2="42" y2="65" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#b58a3d"/>
+      <stop offset=".23" stop-color="#f8e6ab"/>
+      <stop offset=".44" stop-color="#d0a653"/>
+      <stop offset=".62" stop-color="#fff0bd"/>
+      <stop offset=".82" stop-color="#b88b3b"/>
+      <stop offset="1" stop-color="#e6c77e"/>
+    </linearGradient>
+    <pattern id="satin-stitches" width="6" height="3.6" patternUnits="userSpaceOnUse">
+      <path d="M-1 .5 7 1.6" stroke="#d9b871" stroke-width="1.25"/>
+      <path d="M-1 .2 7 1.3" stroke="#f3dda2" stroke-width=".45" opacity=".7"/>
+    </pattern>
+    <g id="petals">
+      <path d="M-3-35c-12-3-15-13-12-23 0 11 13 11 12 23Z"/>
+      <path d="M-7-22c-16-1-24-12-21-25 2 12 15 11 19 18l2 7Z"/>
+      <path d="M-13-7c-19 1-31-9-31-24 5 12 17 10 24 16l7 8Z"/>
+      <path d="M-21 10c-20 3-31-5-34-20 8 11 18 7 27 12l7 8Z"/>
+      <path d="M-24 27c-20 6-31 0-35-14 10 8 19 2 27 6l8 8Z"/>
+      <path d="M-16 43c-20 10-34 7-41-6 12 6 23-3 32 1l9 5Z"/>
+      <path d="M-5 55c-20 11-32 10-40 1 12 2 23-8 31-4l9 3Z"/>
+      <path d="M-5 66c-12 8-20 7-25 1 10 1 14-7 25-1Z"/>
+    </g>
+    <g id="motif-stitches" fill-rule="evenodd" stroke-linejoin="round">
+      <path d="M0-72c-1 10-10 15-10 23 0 6 4 10 10 13 6-3 10-7 10-13 0-8-9-13-10-23Zm0 16c-6 7-6 11 0 15 6-4 6-8 0-15Z"/>
+      <path d="M0-32C-7-15-25-3-25 16c0 16 11 27 25 27s25-11 25-27C25-3 7-15 0-32Zm0 14C-6-5-18 5-18 17a18 18 0 0 0 36 0C18 5 6-5 0-18Z"/>
+      <path d="M0-8C-5 4-13 9-13 19a13 13 0 0 0 26 0C13 9 5 4 0-8Zm0 12c-4 6-8 10-8 15a8 8 0 0 0 16 0c0-5-4-9-8-15Z"/>
+      <path d="M0 12c-5 6-5 10 0 13 5-3 5-7 0-13Z"/>
+      <use href="#petals"/>
+      <use href="#petals" transform="scale(-1 1)"/>
+      <path d="M0 52c-9 10-12 21 0 32 12-11 9-22 0-32Zm0 10c-5 6-6 10 0 16 6-6 5-10 0-16Z"/>
+    </g>
+    <g id="leaf-veins">
+      <path d="M-5-38q-8-6-9-13M-10-26q-11-4-15-14M-17-12q-14-2-22-12M-25 6q-16 0-24-10M-29 24q-16 3-23-5M-20 42q-20 6-29-1M-10 55q-18 9-27 4M-9 66l-13 3"/>
+      <path d="M-15-36q-4 5 0 9M-27-23q-4 6 1 10M-38-8q-4 6 2 10M-44 10q-3 5 3 8M-45 30q-2 5 4 7"/>
+    </g>
+    <g id="lace">
+      <path d="M-4-30c-7-5-14-2-14 3 0 4 5 4 5 1M-9-15c-10-6-20-2-20 4 0 5 7 5 7 1M-20 2c-9-5-17-1-16 5 1 4 7 3 6 0M-27 19c-10-2-17 4-13 8 2 3 7 1 5-2M-22 36c-12 0-17 7-12 11 3 2 7-1 4-3"/>
+      <path d="M-31-40l-2-5m-8 16-4-4m-5 21-5-2m0 22-5 1m2 20-5 3m11 18-3 4"/>
+      <path d="M-3 47q-15 7-24 4M-4 72l-5 4"/>
+    </g>
+    <g id="pearls" fill="#f3d996">
+      <circle cx="-8" cy="-33" r="1.1"/>
+      <circle cx="-17" cy="-18" r="1.2"/>
+      <circle cx="-28" cy="-2" r="1.2"/>
+      <circle cx="-33" cy="16" r="1.2"/>
+      <circle cx="-29" cy="33" r="1.2"/>
+      <circle cx="-16" cy="48" r="1.1"/>
+      <circle cx="0" cy="47" r="1.4"/>
+    </g>
+    <g id="brocade">
+      <use href="#motif-stitches" stroke="#450b1c" stroke-width="1.8" opacity=".3"/>
+      <use href="#motif-stitches" fill="url(#thread-gold)" opacity=".2"/>
+      <use href="#motif-stitches" fill="url(#satin-stitches)"/>
+      <use href="#motif-stitches" stroke="#e4c88a" stroke-width="1" stroke-dasharray=".6 2.4" stroke-linecap="round"/>
+      <g stroke="#7d4a25" stroke-width=".65" stroke-linecap="round">
+        <use href="#leaf-veins"/>
+        <use href="#leaf-veins" transform="scale(-1 1)"/>
+      </g>
+      <g stroke="url(#thread-gold)" stroke-width="1.05" stroke-dasharray=".5 2" stroke-linecap="round">
+        <use href="#lace"/>
+        <use href="#lace" transform="scale(-1 1)"/>
+      </g>
+      <use href="#pearls"/>
+      <use href="#pearls" transform="scale(-1 1)"/>
+    </g>
+    <g id="bud" fill="url(#satin-stitches)" stroke="#e4c47d" stroke-width=".8" stroke-dasharray=".6 2.1" stroke-linecap="round">
+      <path d="M0-9c-4 6-6 10 0 14 6-4 4-8 0-14Z"/>
+      <path d="M-2 6c-7 1-11-3-10-8 3 5 8 3 10 8Zm4 0c7 1 11-3 10-8-3 5-8 3-10 8Z"/>
+      <path d="M0 9v3" fill="none"/>
+    </g>
+  </defs>
+  <use href="#brocade" transform="translate(80 82)"/>
+  <use href="#brocade" transform="translate(240 262)"/>
+  <use href="#bud" transform="translate(240 90)"/>
+  <use href="#bud" transform="translate(80 270)"/>
+</svg>
