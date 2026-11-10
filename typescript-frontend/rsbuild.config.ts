@@ -36,6 +36,18 @@ export default defineConfig(({ env }) => {
   output: {
     manifest: true,
     filenameHash: !isDevelopment,
+    distPath: {
+      js: 'js',
+      jsAsync: 'js',
+      css: 'css',
+      cssAsync: 'css',
+      svg: 'assets',
+      font: 'assets',
+      wasm: 'assets',
+      image: 'assets',
+      media: 'assets',
+      assets: 'assets',
+    },
     copy: [{ from: './src/assets/enjoy-logo.svg', to: 'assets/enjoy-logo.svg' }],
     ...(!isDevelopment && process.env.RSBUILD_ASSET_PREFIX
       ? { assetPrefix: process.env.RSBUILD_ASSET_PREFIX }
@@ -52,12 +64,12 @@ export default defineConfig(({ env }) => {
   },
   tools: {
     cssExtract: {
-      loaderOptions: { publicPath: '../../' },
+      loaderOptions: { publicPath: '../' },
     },
     rspack: {
       output: {
         uniqueName: 'template_app',
-        ...(isDevelopment ? { chunkFilename: 'static/js/[name].js' } : {}),
+        ...(isDevelopment ? { chunkFilename: 'js/[name].js' } : {}),
       },
       optimization: {
         runtimeChunk: 'single',
