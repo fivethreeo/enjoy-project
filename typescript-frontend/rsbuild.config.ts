@@ -48,7 +48,11 @@ export default defineConfig(({ env }) => {
       media: 'assets',
       assets: 'assets',
     },
-    copy: [{ from: './src/assets/enjoy-logo.svg', to: 'assets/enjoy-logo.svg' }],
+    copy: [
+      { from: './src/assets/enjoy-logo.svg', to: 'assets/enjoy-logo.svg' },
+      { from: './src/assets/fonts/cormorant-garamond-OFL.txt', to: 'assets/cormorant-garamond-OFL.txt' },
+      { from: './src/assets/fonts/dm-sans-OFL.txt', to: 'assets/dm-sans-OFL.txt' },
+    ],
     ...(!isDevelopment && process.env.RSBUILD_ASSET_PREFIX
       ? { assetPrefix: process.env.RSBUILD_ASSET_PREFIX }
       : {}),
