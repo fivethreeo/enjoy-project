@@ -1,7 +1,9 @@
 import { initEveryLayout } from './everylayout/init';
 import './index.scss';
+import { initGoldLighting } from './gold-lighting';
 
 initEveryLayout();
+initGoldLighting();
 
 document.body.classList.add('with-js');
 

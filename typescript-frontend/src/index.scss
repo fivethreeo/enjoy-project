@@ -256,6 +256,28 @@ h4 {
   }
 }
 
+.gold-lighting {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  max-inline-size: none;
+  height: calc(var(--carving-height) * 2);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.has-live-gold {
+  &::before {
+    opacity: 0;
+  }
+
+  > .gold-lighting {
+    opacity: 1;
+  }
+}
+
 .patterned-surround {
   position: relative;
   isolation: isolate;

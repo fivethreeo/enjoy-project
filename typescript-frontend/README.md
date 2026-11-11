@@ -42,6 +42,32 @@ Preview the production build locally:
 npm run preview
 ```
 
+## Interactive gold border
+
+On fine-pointer devices, `src/gold-lighting.ts` uses a small WebGL surface and
+the sculpt's normal map to move gold highlights with the mouse. It renders only
+on interaction, scrolling or resizing while the border is visible. There is no
+browser 3D-engine dependency.
+
+The existing `gold-border-3d.webp` CSS background remains visible until rendering
+succeeds, and is the fallback without JavaScript/WebGL, on touch devices, with
+reduced motion, or if texture loading fails. Context loss also restores it.
+
+Regenerate the gold image and its matching, unlit 512-pixel normal map from this
+directory (requires Blender, Inkscape and ImageMagick):
+
+```sh
+blender --background --python scripts/render-gold-border.py -- \
+  --output src/assets/gold-border-3d.webp \
+  --normal-map src/assets/gold-border-normal.png
+```
+
+Add `--scene gold-border.blend` to save the editable gold scene as well. The
+normal-map export bypasses display colour transforms and strips colour-profile
+metadata so RGB values remain surface directions, not display colours.
+
+Run focused fallback regressions with `node --test scripts/gold-lighting.test.mjs`.
+
 ## Learn more
 
 To learn more about Rsbuild, check out the following resources:

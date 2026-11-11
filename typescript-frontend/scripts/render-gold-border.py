@@ -173,6 +173,51 @@ def sculpt_geometry(geometry, temporary):
     return obj
 
 
+def render_normals(scene, carving, destination, temporary):
+    material = bpy.data.materials.new("World-space surface normals")
+    material.use_nodes = True
+    nodes = material.node_tree.nodes
+    nodes.clear()
+    geometry = nodes.new("ShaderNodeNewGeometry")
+    scale = nodes.new("ShaderNodeVectorMath")
+    scale.operation = "MULTIPLY"
+    scale.inputs[1].default_value = (0.5, 0.5, 0.5)
+    bias = nodes.new("ShaderNodeVectorMath")
+    bias.operation = "ADD"
+    bias.inputs[1].default_value = (0.5, 0.5, 0.5)
+    emission = nodes.new("ShaderNodeEmission")
+    output = nodes.new("ShaderNodeOutputMaterial")
+    links = material.node_tree.links
+    links.new(geometry.outputs["Normal"], scale.inputs[0])
+    links.new(scale.outputs[0], bias.inputs[0])
+    links.new(bias.outputs[0], emission.inputs["Color"])
+    links.new(emission.outputs[0], output.inputs["Surface"])
+    carving.data.materials.clear()
+    carving.data.materials.append(material)
+    scene.view_settings.view_transform = "Raw"
+    scene.view_settings.look = "None"
+    scene.view_settings.exposure = 0
+    scene.view_settings.gamma = 1
+    scene.cycles.samples = 8
+    scene.cycles.use_denoising = False
+    # The border tile is at most 164 CSS pixels wide, so 512 also covers high-DPI screens.
+    width = min(scene.render.resolution_x, 512)
+    scene.render.resolution_y = round(scene.render.resolution_y * width / scene.render.resolution_x)
+    scene.render.resolution_x = width
+    scene.render.filepath = str(temporary / "normals.png")
+    bpy.ops.render.render(write_still=True)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    # Normal channels are data, not display colours: omit colour-management metadata.
+    subprocess.run(
+        [
+            "magick", scene.render.filepath, "-strip",
+            "-define", "png:exclude-chunks=gAMA,cHRM,sRGB,iCCP",
+            str(destination.resolve()),
+        ],
+        check=True,
+    )
+
+
 def main():
     arguments = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     parser = argparse.ArgumentParser()
@@ -180,6 +225,7 @@ def main():
     parser.add_argument("--width", type=int, default=1536)
     parser.add_argument("--samples", type=int, default=64)
     parser.add_argument("--scene", type=Path)
+    parser.add_argument("--normal-map", type=Path)
     args = parser.parse_args(arguments)
 
     bpy.ops.object.select_all(action="SELECT")
@@ -260,6 +306,9 @@ def main():
             check=True,
         )
         print(f"Rendered {len(carving.data.polygons)} sculpted gold faces to {args.output}")
+        if args.normal_map:
+            render_normals(scene, carving, args.normal_map, temporary)
+            print(f"Rendered matching surface normals to {args.normal_map}")
 
 
 if __name__ == "__main__":
